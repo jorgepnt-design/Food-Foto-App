@@ -1,4 +1,4 @@
-# MealVault - Food Foto Organizer
+# Foodporn - Food Foto Organizer
 
 Statische Web-App für das Repository `jorgepnt-design/Food-Foto-App`.
 

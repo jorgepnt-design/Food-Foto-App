@@ -4,16 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2f6f63" />
-  <title>MealVault - Food Foto Organizer</title>
+  <meta name="apple-mobile-web-app-title" content="Foodporn" />
+  <title>Foodporn - Food Foto Organizer</title>
+  <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app" class="app-shell">
     <aside class="sidebar" aria-label="Navigation">
       <div class="brand">
-        <div class="brand-mark">MV</div>
+        <div class="brand-mark"><img src="app-icon.svg" alt="" /></div>
         <div>
-          <h1 data-i18n="appName">MealVault</h1>
+          <h1 data-i18n="appName">Foodporn</h1>
           <p data-i18n="tagline">Food-Fotos organisiert</p>
         </div>
       </div>
@@ -116,6 +121,7 @@
             <p data-i18n="cloudText">Google Cloud Storage kann über ein Render-Backend angebunden werden.</p>
             <label><span data-i18n="storageProvider">Provider</span><select id="cloud-provider"><option>Google Cloud Storage</option><option>Render Disk</option><option>AWS S3</option><option>Firebase Storage</option></select></label>
             <label><span data-i18n="apiEndpoint">API-Endpunkt</span><input id="api-endpoint" type="url" placeholder="https://deine-api.onrender.com" /></label>
+            <button id="cloud-sync" class="primary-button" data-i18n="cloudSync">Cloud synchronisieren</button>
             <p id="cloud-status" class="cloud-status">Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.</p>
           </section>
           <section class="settings-panel">

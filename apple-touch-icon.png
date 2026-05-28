@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Foodporn App Icon">
+  <defs>
+    <linearGradient id="bg" x1="88" y1="56" x2="430" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF3D8"/>
+      <stop offset="0.48" stop-color="#F0A45B"/>
+      <stop offset="1" stop-color="#2F6F63"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="146" y1="162" x2="366" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F2EC"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="276" r="146" fill="#172520" opacity="0.18"/>
+  <circle cx="256" cy="256" r="144" fill="url(#plate)"/>
+  <circle cx="256" cy="256" r="104" fill="#FFF8ED" stroke="#E1D5C3" stroke-width="10"/>
+  <path d="M197 273c-26-47 4-96 58-103 42-5 83 21 91 64 8 45-25 88-77 94-31 4-56-10-72-55Z" fill="#2F6F63"/>
+  <path d="M178 238c32-50 105-57 146-14 7 7 6 20-2 26-32 25-92 32-139 7-8-4-10-12-5-19Z" fill="#E2533D"/>
+  <circle cx="247" cy="247" r="45" fill="#F6C84C"/>
+  <circle cx="247" cy="247" r="21" fill="#FFF8ED"/>
+  <path d="M326 165c20 31 8 57-20 75 4-35-24-43-11-73 6-13 22-14 31-2Z" fill="#7CB342"/>
+  <path d="M154 146c-15 41-20 76-15 113 2 16 25 16 28 0 8-39 5-73-13-113Z" fill="#F7F2E8"/>
+  <path d="M154 146c8 16 13 38 14 65" fill="none" stroke="#172520" stroke-opacity="0.2" stroke-width="8" stroke-linecap="round"/>
+  <path d="M374 141c-13 37-15 78-6 118 4 16 27 14 28-2 3-41-5-79-22-116Z" fill="#F7F2E8"/>
+  <path d="M230 341h52c17 0 31 14 31 31v4H199v-4c0-17 14-31 31-31Z" fill="#C46C3D"/>
+</svg>
