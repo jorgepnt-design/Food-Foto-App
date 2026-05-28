@@ -351,7 +351,8 @@ async function handleFiles(fileList) {
     } catch (error) {
       photo.storage = "local";
       photo.cloudError = error.message;
-      item.querySelector("strong").textContent = "Lokal gespeichert";
+      item.querySelector("strong").textContent = "Cloud fehlgeschlagen";
+      item.title = `Cloud-Upload fehlgeschlagen: ${error.message}`;
     }
     await savePhotoBestEffort(photo, item);
   }
@@ -363,7 +364,8 @@ async function savePhotoBestEffort(photo, item) {
   try {
     await savePhoto(photo);
     upsertPhotoInMemory(photo);
-    item.querySelector("strong").textContent = photo.storage === "gcs" ? "Cloud + lokal" : "Lokal";
+    item.querySelector("strong").textContent = photo.storage === "gcs" ? "Cloud + lokal" : photo.cloudError ? "Lokal (Cloud-Fehler)" : "Lokal";
+    if (photo.cloudError) item.title = `Cloud-Upload fehlgeschlagen: ${photo.cloudError}`;
     return;
   } catch (error) {
     photo.localSaveWarning = error.message;
@@ -447,7 +449,7 @@ async function autoSyncFromCloud() {
 
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  if (!response.ok) throw new Error(await getResponseError(response));
   return response.json();
 }
 
@@ -458,7 +460,7 @@ async function uploadPhotoToCloud(file, photo) {
   form.append("image", file, file.name);
   form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
   const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  if (!response.ok) throw new Error(`Cloud-Upload fehlgeschlagen: ${response.status}`);
+  if (!response.ok) throw new Error(await getResponseError(response));
   return response.json();
 }
 
@@ -470,8 +472,24 @@ async function uploadEditedImageToCloud(blob, photo) {
   form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
   if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
   const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  if (!response.ok) throw new Error(`Cloud-Upload fehlgeschlagen: ${response.status}`);
+  if (!response.ok) throw new Error(await getResponseError(response));
   return response.json();
+}
+
+async function getResponseError(response) {
+  let details = "";
+  try {
+    const data = await response.clone().json();
+    details = data.message || data.error || "";
+  } catch {
+    try {
+      details = await response.text();
+    } catch {
+      details = "";
+    }
+  }
+  const suffix = details ? ` - ${details}` : "";
+  return `${response.status} ${response.statusText}${suffix}`;
 }
 
 async function syncFromCloud(options = {}) {
