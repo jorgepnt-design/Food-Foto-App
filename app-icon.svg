@@ -74,15 +74,17 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  setupCategorySelects();
+  bindEvents();
+  applyLanguage();
   try {
     state.db = await openDb();
     state.photos = await getAllPhotos();
-    setupCategorySelects();
-    bindEvents();
-    applyLanguage();
     render();
   } catch (error) {
     showStartupError(error);
+    state.photos = [];
+    render();
   }
 }
 
@@ -108,10 +110,12 @@ function openDb() {
 }
 
 function tx(mode = "readonly") {
+  if (!state.db) throw new Error("Lokale Datenbank ist nicht verfügbar");
   return state.db.transaction(STORE, mode).objectStore(STORE);
 }
 
 function getAllPhotos() {
+  if (!state.db) return Promise.resolve(state.photos.slice());
   return new Promise((resolve, reject) => {
     const request = tx().getAll();
     request.onsuccess = () => resolve(request.result.sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt)));
@@ -120,6 +124,12 @@ function getAllPhotos() {
 }
 
 function savePhoto(photo) {
+  if (!state.db) {
+    const index = state.photos.findIndex((item) => item.id === photo.id);
+    if (index >= 0) state.photos[index] = photo;
+    else state.photos.unshift(photo);
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
     const request = tx("readwrite").put(photo);
     request.onsuccess = () => resolve();
@@ -128,6 +138,10 @@ function savePhoto(photo) {
 }
 
 function removePhoto(id) {
+  if (!state.db) {
+    state.photos = state.photos.filter((photo) => photo.id !== id);
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
     const request = tx("readwrite").delete(id);
     request.onsuccess = () => resolve();
@@ -367,7 +381,7 @@ async function syncFromCloud() {
     const existing = state.photos.find((photo) => photo.cloudObject === cloudPhoto.cloudObject || photo.id === cloudPhoto.id);
     const merged = {
       id: cloudPhoto.id || crypto.randomUUID(),
-      name: cloudPhoto.name || cloudPhoto.cloudObject?.split("/").pop() || "cloud-photo.jpg",
+      name: cloudPhoto.name || getCloudObjectFileName(cloudPhoto.cloudObject) || "cloud-photo.jpg",
       type: cloudPhoto.type || "image/jpeg",
       dataUrl: cloudPhoto.cloudUrl,
       takenAt: cloudPhoto.takenAt || cloudPhoto.createdAt || new Date().toISOString(),
@@ -401,6 +415,12 @@ function parseTags(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
   return String(value).split(",").map((tag) => tag.trim()).filter(Boolean);
+}
+
+function getCloudObjectFileName(objectName) {
+  if (!objectName) return "";
+  const parts = String(objectName).split("/");
+  return parts[parts.length - 1];
 }
 
 function readAsDataUrl(file) {
@@ -758,7 +778,8 @@ function countTags(items) {
 }
 
 function topKey(counts) {
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const first = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return first ? first[0] : undefined;
 }
 
 function renderBars(selector, counts) {
