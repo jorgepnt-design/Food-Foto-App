@@ -1,51 +1,226 @@
-# Foodporn - Food Foto Organizer
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2f6f63" />
+  <meta name="apple-mobile-web-app-title" content="Foodporn" />
+  <title>Foodporn - Food Foto Organizer</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260528-8" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260528-8" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260528-8" />
+  <link rel="manifest" href="site.webmanifest?v=foodporn-20260528-8" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260528-8" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="brand">
+        <div class="brand-mark"><img src="icon-192.png" alt="" /></div>
+        <div>
+          <h1 data-i18n="appName">Foodporn</h1>
+          <p data-i18n="tagline">Food-Fotos organisiert</p>
+        </div>
+      </div>
 
-Statische Web-App für das Repository `jorgepnt-design/Food-Foto-App`.
+      <nav class="nav-tabs" aria-label="Ansichten">
+        <button class="nav-tab active" data-view="gallery" title="Galerie"><span class="icon">▦</span><span data-i18n="gallery">Galerie</span></button>
+        <button class="nav-tab" data-view="upload" title="Upload"><span class="icon">⇧</span><span data-i18n="upload">Upload</span></button>
+        <button class="nav-tab" data-view="stats" title="Statistiken"><span class="icon">◷</span><span data-i18n="stats">Statistiken</span></button>
+        <button class="nav-tab" data-view="settings" title="Einstellungen"><span class="icon">⚙</span><span data-i18n="settings">Einstellungen</span></button>
+      </nav>
 
-## Start
+      <section class="sidebar-section">
+        <h2 data-i18n="quickFilters">Schnellfilter</h2>
+        <button class="quick-filter active" data-quick="all" data-i18n="allPhotos">Alle Fotos</button>
+        <button class="quick-filter" data-quick="favorites" data-i18n="favorites">Favoriten</button>
+        <button class="quick-filter" data-quick="thisMonth" data-i18n="thisMonth">Dieser Monat</button>
+        <button class="quick-filter" data-quick="untagged" data-i18n="untagged">Ohne Tags</button>
+      </section>
 
-Die App ist ohne Build-Schritt lauffähig:
+      <section class="sidebar-section storage-note">
+        <h2 data-i18n="storage">Speicherung</h2>
+        <p data-i18n="storageText">Lokal in IndexedDB. Cloud-Anbindung ist vorbereitet.</p>
+      </section>
+    </aside>
 
-1. `index.html` im Browser öffnen
-2. Food-Fotos hochladen
-3. Kategorien, Tags und Beschreibungen pflegen
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" data-i18n="workspace">Private Sammlung</p>
+          <h2 id="view-title" data-i18n="galleryTitle">Essensbilder</h2>
+        </div>
+        <div class="top-actions">
+          <button id="language-toggle" class="icon-button" title="Deutsch/English">DE</button>
+          <button id="tutorial-button" class="secondary-button" data-i18n="tutorial">Tutorial</button>
+          <button id="share-button" class="secondary-button" data-i18n="share">Teilen</button>
+          <button id="export-button" class="primary-button" data-i18n="exportZip">ZIP exportieren</button>
+        </div>
+      </header>
 
-## Funktionen
+      <section id="gallery-view" class="view active">
+        <div class="filter-bar">
+          <label class="search-field"><span data-i18n="search">Suche</span><input id="search-input" type="search" placeholder="Tags, Kategorie, Beschreibung..." /></label>
+          <label><span data-i18n="from">Von</span><input id="date-from" type="date" /></label>
+          <label><span data-i18n="to">Bis</span><input id="date-to" type="date" /></label>
+          <label><span data-i18n="category">Kategorie</span><select id="category-filter"></select></label>
+          <label><span data-i18n="tag">Tag</span><input id="tag-filter" type="text" placeholder="vegetarisch" /></label>
+          <button id="clear-filters" class="secondary-button" data-i18n="reset">Zurücksetzen</button>
+        </div>
 
-- Drag-and-Drop-Upload mehrerer Bilder
-- Speicherung im Browser per IndexedDB
-- JPEG-EXIF-Auswertung für Aufnahmedatum, Kamerahersteller und Modell
-- Kategorien, Tags, Beschreibungen und Favoriten
-- Filter nach Datum, Kategorie, Tags und Volltextsuche
-- Galerie- und Detailansicht
-- einfache Bildbearbeitung: drehen, quadratisch zuschneiden, warmer Filter, Schwarz-Weiß
-- Statistik-Dashboard
-- ZIP-Export inklusive `metadata.json`
-- Teilen per Web Share API oder Zwischenablage
-- Deutsch/Englisch-Umschaltung
-- Vercel-geeignete Static-Site-Struktur
-- optionaler Cloud-Upload nach Google Cloud Storage über ein Render-Backend
+        <div class="gallery-meta">
+          <p id="result-count">0 Fotos</p>
+          <div class="density-toggle" role="group" aria-label="Galeriedichte">
+            <button class="density active" data-density="comfortable">▦</button>
+            <button class="density" data-density="compact">▥</button>
+          </div>
+        </div>
 
-## Frontend-Deployment auf Vercel
+        <section id="gallery-grid" class="gallery-grid"></section>
+        <section id="empty-state" class="empty-state hidden">
+          <h3 data-i18n="emptyTitle">Noch keine passenden Bilder</h3>
+          <p data-i18n="emptyText">Lade Essensfotos hoch oder passe die Filter an.</p>
+          <button class="primary-button" data-go-upload data-i18n="uploadPhotos">Fotos hochladen</button>
+        </section>
+      </section>
 
-Bei Vercel als Projekt-Root dieses Repository wählen. Es ist kein Build Command nötig, weil `index.html`, `styles.css` und `app.js` direkt ausgeliefert werden.
+      <section id="upload-view" class="view">
+        <div id="drop-zone" class="drop-zone">
+          <div class="drop-content">
+            <div class="drop-icon">⇧</div>
+            <h3 data-i18n="dropTitle">Bilder hier ablegen</h3>
+            <button id="choose-files" class="file-picker-button" type="button" data-i18n="choosePhotos">Bilder auswählen</button>
+            <input id="file-input" class="file-input" type="file" accept="image/*,.heic,.heif" multiple />
+            <p data-i18n="dropText">Oder anklicken und mehrere Food-Fotos auswählen. EXIF-Daten werden automatisch gelesen.</p>
+          </div>
+        </div>
+        <div id="upload-list" class="upload-list"></div>
+      </section>
 
-## Cloud-Speicherung mit Google Cloud Storage und Render
+      <section id="stats-view" class="view">
+        <div class="dashboard">
+          <article class="stat-card"><span data-i18n="totalPhotos">Fotos gesamt</span><strong id="stat-total">0</strong></article>
+          <article class="stat-card"><span data-i18n="favoritePhotos">Favoriten</span><strong id="stat-favorites">0</strong></article>
+          <article class="stat-card"><span data-i18n="topCategory">Top-Kategorie</span><strong id="stat-top-category">-</strong></article>
+          <article class="stat-card"><span data-i18n="topTag">Top-Tag</span><strong id="stat-top-tag">-</strong></article>
+        </div>
+        <div class="charts">
+          <section><h3 data-i18n="categoryDistribution">Kategorien</h3><div id="category-bars" class="bars"></div></section>
+          <section><h3 data-i18n="tagDistribution">Beliebte Tags</h3><div id="tag-bars" class="bars"></div></section>
+        </div>
+      </section>
 
-Der Ordner `server/` enthält eine Render-fähige Node/Express-API. Sie nimmt Bild-Uploads entgegen und speichert die Dateien in Google Cloud Storage.
+      <section id="settings-view" class="view">
+        <div class="settings-grid">
+          <section class="settings-panel">
+            <h3 data-i18n="authTitle">Login & Datenschutz</h3>
+            <p data-i18n="authText">Diese Version läuft lokal ohne Server. OAuth/Auth0 kann im Backend ergänzt werden.</p>
+            <label><span data-i18n="demoUser">Demo-Nutzer</span><input id="demo-user" type="text" value="jorge@example.com" /></label>
+          </section>
+          <section class="settings-panel">
+            <h3 data-i18n="cloudTitle">Cloud-Speicher</h3>
+            <p data-i18n="cloudText">Google Cloud Storage kann über ein Render-Backend angebunden werden.</p>
+            <label><span data-i18n="storageProvider">Provider</span><select id="cloud-provider"><option>Google Cloud Storage</option><option>Render Disk</option><option>AWS S3</option><option>Firebase Storage</option></select></label>
+            <label><span data-i18n="apiEndpoint">API-Endpunkt</span><input id="api-endpoint" type="url" value="https://food-foto-app-api.onrender.com" placeholder="https://food-foto-app-api.onrender.com" /></label>
+            <div class="cloud-actions">
+              <button id="cloud-test" class="secondary-button" data-i18n="cloudTest">Cloud testen</button>
+              <button id="cloud-sync" class="primary-button" data-i18n="cloudSync">Cloud synchronisieren</button>
+            </div>
+            <p id="cloud-status" class="cloud-status">Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.</p>
+          </section>
+          <section class="settings-panel">
+            <h3 data-i18n="backupTitle">Backups</h3>
+            <p data-i18n="backupText">Exportiere regelmäßig ZIP-Dateien als lokale Sicherung.</p>
+            <button id="metadata-export" class="secondary-button" data-i18n="exportMetadata">Metadaten exportieren</button>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
 
-Benötigte Render-Umgebungsvariablen:
+  <aside id="detail-panel" class="detail-panel" aria-hidden="true">
+    <div class="detail-header"><h2 data-i18n="details">Details</h2><button id="close-detail" class="icon-button" title="Schließen">×</button></div>
+    <div class="image-editor">
+      <canvas id="edit-canvas"></canvas>
+      <div class="edit-tools">
+        <button id="rotate-left" class="icon-button" title="Links drehen">↺</button>
+        <button id="rotate-right" class="icon-button" title="Rechts drehen">↻</button>
+        <button id="crop-square" class="icon-button" title="Quadratisch zuschneiden">□</button>
+        <button id="flip-horizontal" class="icon-button" title="Horizontal spiegeln">⇄</button>
+        <button id="flip-vertical" class="icon-button" title="Vertikal spiegeln">⇅</button>
+        <button id="filter-warm" class="icon-button" title="Warmer Filter">◐</button>
+        <button id="filter-mono" class="icon-button" title="Schwarz-Weiß">◑</button>
+        <button id="reset-edit" class="secondary-button" data-i18n="resetEdit">Reset</button>
+        <button id="save-edit" class="primary-button" data-i18n="saveImage">Bild speichern</button>
+      </div>
+      <div class="adjust-tools" aria-label="Bildanpassungen">
+        <label><span data-i18n="brightness">Helligkeit</span><input id="brightness-range" type="range" min="50" max="150" value="100" /></label>
+        <label><span data-i18n="contrast">Kontrast</span><input id="contrast-range" type="range" min="50" max="150" value="100" /></label>
+        <label><span data-i18n="saturation">Sättigung</span><input id="saturation-range" type="range" min="0" max="200" value="100" /></label>
+      </div>
+    </div>
+    <form id="detail-form" class="detail-form">
+      <label><span data-i18n="description">Beschreibung</span><textarea id="detail-description" rows="3"></textarea></label>
+      <label><span data-i18n="category">Kategorie</span><select id="detail-category"></select></label>
+      <label><span data-i18n="tagsComma">Tags, mit Komma getrennt</span><input id="detail-tags" type="text" /></label>
+      <label><span data-i18n="takenAt">Aufgenommen am</span><input id="detail-date" type="datetime-local" /></label>
+      <div class="meta-list">
+        <p><span>Kamera:</span> <strong id="detail-camera">-</strong></p>
+        <p><span>Datei:</span> <strong id="detail-file">-</strong></p>
+      </div>
+      <div class="detail-actions">
+        <button type="button" id="favorite-toggle" class="secondary-button" data-i18n="favorite">Favorit</button>
+        <button type="submit" class="primary-button" data-i18n="saveMetadata">Metadaten speichern</button>
+        <button type="button" id="delete-photo" class="danger-button" data-i18n="delete">Löschen</button>
+      </div>
+    </form>
+  </aside>
 
-- `GCS_BUCKET_NAME`: Name des Buckets
-- `GCP_PROJECT_ID`: Google-Cloud-Projekt
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON`: Service-Account-JSON als Secret
-- `CORS_ORIGIN`: erlaubte Frontend-URL, z. B. `https://jorgepnt-design.github.io`
-- `MAX_UPLOAD_MB`: Upload-Limit, Standard `25`
+  <div id="tutorial-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <button id="close-tutorial" class="icon-button modal-close">×</button>
+      <h2 data-i18n="tutorialTitle">Kurze Einführung</h2>
+      <ol>
+        <li data-i18n="tutorial1">Ziehe Food-Fotos in den Upload-Bereich.</li>
+        <li data-i18n="tutorial2">Prüfe EXIF-Datum, Kategorie und Tags in der Detailansicht.</li>
+        <li data-i18n="tutorial3">Nutze Suche, Datumsfilter und Tags, um alte Gerichte schnell zu finden.</li>
+        <li data-i18n="tutorial4">Exportiere ausgewählte Filterergebnisse als ZIP-Backup.</li>
+      </ol>
+    </div>
+  </div>
 
-Der Service Account braucht mindestens Schreibrechte auf den Bucket, z. B. die Rolle `Storage Object Admin` für diesen Bucket. Wenn der Bucket privat bleibt, liefert die API signierte Lese-URLs zurück. Wenn du öffentliche oder CDN-URLs nutzen willst, setze zusätzlich `GCS_PUBLIC_BASE_URL`.
+  <template id="photo-card-template">
+    <article class="photo-card">
+      <button class="photo-open" type="button"><img alt="" loading="lazy" /></button>
+      <div class="photo-info"><div><h3></h3><p></p></div><button class="favorite-star" type="button" title="Favorit">☆</button></div>
+      <div class="tag-row"></div>
+    </article>
+  </template>
 
-In der App unter `Einstellungen` den Render-API-Endpunkt eintragen, z. B. `https://food-foto-app-api.onrender.com`. Ab dann werden neue und bearbeitete Bilder zusätzlich in Google Cloud Storage gespeichert.
+  <script src="app.js?v=foodporn-20260528-8" onerror="document.body.classList.add('script-failed')"></script>
+  <script>
+    window.addEventListener("error", function (event) {
+      var main = document.querySelector(".main");
+      if (!main || document.querySelector(".startup-error")) return;
+      var box = document.createElement("div");
+      box.className = "startup-error";
+      box.textContent = "App-Fehler: " + (event.message || "JavaScript konnte nicht geladen werden");
+      main.insertBefore(box, main.firstChild);
+    });
 
-Der API-Endpunkt wird im Browser gespeichert. Auf jedem neuen Gerät muss er einmal eingetragen werden. Danach kann über `Cloud synchronisieren` die Galerie aus Google Cloud Storage geladen werden.
-
-Für die nächste Ausbaustufe sollten Metadaten zusätzlich in PostgreSQL gespeichert und OAuth/Auth0 aktiviert werden.
+    document.addEventListener("click", function (event) {
+      var nav = event.target.closest && event.target.closest("[data-view]");
+      if (!nav) return;
+      document.querySelectorAll(".nav-tab").forEach(function (button) {
+        button.classList.toggle("active", button === nav);
+      });
+      document.querySelectorAll(".view").forEach(function (section) {
+        section.classList.toggle("active", section.id === nav.getAttribute("data-view") + "-view");
+      });
+      var title = document.getElementById("view-title");
+      var label = nav.querySelector("[data-i18n]");
+      if (title && label) title.textContent = label.textContent === "Galerie" ? "Essensbilder" : label.textContent;
+    });
+  </script>
+</body>
+</html>

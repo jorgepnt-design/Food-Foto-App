@@ -171,7 +171,6 @@ textarea { resize: vertical; }
   background: #fbfaf7;
 }
 .drop-zone.dragging { border-color: var(--primary); background: #edf6f1; }
-.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .drop-content { text-align: center; padding: 28px; }
 .drop-icon {
   width: 64px;
@@ -186,6 +185,28 @@ textarea { resize: vertical; }
 }
 .drop-content h3, .drop-content p { margin: 0 0 8px; }
 .drop-content p, .upload-list { color: var(--muted); }
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.file-picker-button {
+  width: fit-content;
+  margin: 14px auto 0;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  border: 0;
+  background: var(--primary);
+  color: #fff;
+  padding: 0 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .upload-list { display: grid; gap: 10px; margin-top: 14px; }
 .upload-item {
   display: flex;
