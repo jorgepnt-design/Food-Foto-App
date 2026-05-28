@@ -1,0 +1,662 @@
+const DB_NAME = "mealvault-db";
+const STORE = "photos";
+const categories = ["Fruehstueck", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getraenke", "Sonstiges"];
+
+const translations = {
+  de: {
+    appName: "MealVault", tagline: "Food-Fotos organisiert", gallery: "Galerie", upload: "Upload", stats: "Statistiken",
+    settings: "Einstellungen", quickFilters: "Schnellfilter", allPhotos: "Alle Fotos", favorites: "Favoriten",
+    thisMonth: "Dieser Monat", untagged: "Ohne Tags", storage: "Speicherung",
+    storageText: "Lokal in IndexedDB. Cloud-Anbindung ist vorbereitet.", workspace: "Private Sammlung",
+    galleryTitle: "Essensbilder", tutorial: "Tutorial", share: "Teilen", exportZip: "ZIP exportieren",
+    search: "Suche", from: "Von", to: "Bis", category: "Kategorie", tag: "Tag", reset: "Zuruecksetzen",
+    emptyTitle: "Noch keine passenden Bilder", emptyText: "Lade Essensfotos hoch oder passe die Filter an.",
+    uploadPhotos: "Fotos hochladen", dropTitle: "Bilder hier ablegen",
+    dropText: "Oder anklicken und mehrere Food-Fotos auswaehlen. EXIF-Daten werden automatisch gelesen.",
+    totalPhotos: "Fotos gesamt", favoritePhotos: "Favoriten", topCategory: "Top-Kategorie", topTag: "Top-Tag",
+    categoryDistribution: "Kategorien", tagDistribution: "Beliebte Tags", authTitle: "Login & Datenschutz",
+    authText: "Diese Version laeuft lokal ohne Server. OAuth/Auth0 kann im Backend ergaenzt werden.",
+    demoUser: "Demo-Nutzer", cloudTitle: "Cloud-Speicher",
+    cloudText: "Render, S3, Firebase Storage oder Google Cloud koennen ueber API-Endpunkte angebunden werden.",
+    storageProvider: "Provider", apiEndpoint: "API-Endpunkt", backupTitle: "Backups",
+    backupText: "Exportiere regelmaessig ZIP-Dateien als lokale Sicherung.", exportMetadata: "Metadaten exportieren",
+    details: "Details", saveImage: "Bild speichern", description: "Beschreibung", tagsComma: "Tags, mit Komma getrennt",
+    takenAt: "Aufgenommen am", favorite: "Favorit", saveMetadata: "Metadaten speichern", delete: "Loeschen",
+    tutorialTitle: "Kurze Einfuehrung", tutorial1: "Ziehe Food-Fotos in den Upload-Bereich.",
+    tutorial2: "Pruefe EXIF-Datum, Kategorie und Tags in der Detailansicht.",
+    tutorial3: "Nutze Suche, Datumsfilter und Tags, um alte Gerichte schnell zu finden.",
+    tutorial4: "Exportiere ausgewaehlte Filterergebnisse als ZIP-Backup."
+  },
+  en: {
+    appName: "MealVault", tagline: "Food photos organized", gallery: "Gallery", upload: "Upload", stats: "Stats",
+    settings: "Settings", quickFilters: "Quick filters", allPhotos: "All photos", favorites: "Favorites",
+    thisMonth: "This month", untagged: "Untagged", storage: "Storage",
+    storageText: "Stored locally in IndexedDB. Cloud sync is ready to connect.", workspace: "Private collection",
+    galleryTitle: "Meal photos", tutorial: "Tutorial", share: "Share", exportZip: "Export ZIP",
+    search: "Search", from: "From", to: "To", category: "Category", tag: "Tag", reset: "Reset",
+    emptyTitle: "No matching photos yet", emptyText: "Upload meal photos or change the filters.",
+    uploadPhotos: "Upload photos", dropTitle: "Drop images here",
+    dropText: "Or click to choose multiple food photos. EXIF data is read automatically.",
+    totalPhotos: "Total photos", favoritePhotos: "Favorites", topCategory: "Top category", topTag: "Top tag",
+    categoryDistribution: "Categories", tagDistribution: "Popular tags", authTitle: "Login & privacy",
+    authText: "This version runs locally without a server. OAuth/Auth0 can be added in the backend.",
+    demoUser: "Demo user", cloudTitle: "Cloud storage",
+    cloudText: "Render, S3, Firebase Storage or Google Cloud can be connected through API endpoints.",
+    storageProvider: "Provider", apiEndpoint: "API endpoint", backupTitle: "Backups",
+    backupText: "Export ZIP files regularly as local backups.", exportMetadata: "Export metadata",
+    details: "Details", saveImage: "Save image", description: "Description", tagsComma: "Tags, comma separated",
+    takenAt: "Taken at", favorite: "Favorite", saveMetadata: "Save metadata", delete: "Delete",
+    tutorialTitle: "Quick start", tutorial1: "Drag food photos into the upload area.",
+    tutorial2: "Review EXIF date, category and tags in the detail view.",
+    tutorial3: "Use search, date filters and tags to find older dishes quickly.",
+    tutorial4: "Export filtered results as a ZIP backup."
+  }
+};
+
+const state = {
+  db: null,
+  photos: [],
+  filtered: [],
+  activeView: "gallery",
+  quick: "all",
+  lang: localStorage.getItem("mealvault-lang") || "de",
+  selectedId: null,
+  edit: { rotation: 0, filter: "none", cropSquare: false }
+};
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+document.addEventListener("DOMContentLoaded", init);
+
+async function init() {
+  state.db = await openDb();
+  state.photos = await getAllPhotos();
+  setupCategorySelects();
+  bindEvents();
+  applyLanguage();
+  render();
+}
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function tx(mode = "readonly") {
+  return state.db.transaction(STORE, mode).objectStore(STORE);
+}
+
+function getAllPhotos() {
+  return new Promise((resolve, reject) => {
+    const request = tx().getAll();
+    request.onsuccess = () => resolve(request.result.sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt)));
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function savePhoto(photo) {
+  return new Promise((resolve, reject) => {
+    const request = tx("readwrite").put(photo);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function removePhoto(id) {
+  return new Promise((resolve, reject) => {
+    const request = tx("readwrite").delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function setupCategorySelects() {
+  const html = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
+  $("#category-filter").innerHTML = html;
+  $("#detail-category").innerHTML = categories.map((c) => `<option>${c}</option>`).join("");
+}
+
+function bindEvents() {
+  $$(".nav-tab").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+  $$(".quick-filter").forEach((button) => button.addEventListener("click", () => {
+    state.quick = button.dataset.quick;
+    $$(".quick-filter").forEach((item) => item.classList.toggle("active", item === button));
+    switchView("gallery");
+    render();
+  }));
+  ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => {
+    $(`#${id}`).addEventListener("input", render);
+  });
+  $("#clear-filters").addEventListener("click", clearFilters);
+  $$("[data-go-upload]").forEach((button) => button.addEventListener("click", () => switchView("upload")));
+  $$(".density").forEach((button) => button.addEventListener("click", () => {
+    $$(".density").forEach((item) => item.classList.toggle("active", item === button));
+    $("#gallery-grid").classList.toggle("compact", button.dataset.density === "compact");
+  }));
+
+  const drop = $("#drop-zone");
+  $("#file-input").addEventListener("change", (event) => handleFiles(event.target.files));
+  ["dragenter", "dragover"].forEach((name) => drop.addEventListener(name, (event) => {
+    event.preventDefault();
+    drop.classList.add("dragging");
+  }));
+  ["dragleave", "drop"].forEach((name) => drop.addEventListener(name, (event) => {
+    event.preventDefault();
+    drop.classList.remove("dragging");
+  }));
+  drop.addEventListener("drop", (event) => handleFiles(event.dataTransfer.files));
+
+  $("#close-detail").addEventListener("click", closeDetail);
+  $("#detail-form").addEventListener("submit", saveDetails);
+  $("#favorite-toggle").addEventListener("click", toggleSelectedFavorite);
+  $("#delete-photo").addEventListener("click", deleteSelected);
+  $("#rotate-left").addEventListener("click", () => editImage({ rotation: state.edit.rotation - 90 }));
+  $("#rotate-right").addEventListener("click", () => editImage({ rotation: state.edit.rotation + 90 }));
+  $("#crop-square").addEventListener("click", () => editImage({ cropSquare: !state.edit.cropSquare }));
+  $("#filter-warm").addEventListener("click", () => editImage({ filter: state.edit.filter === "warm" ? "none" : "warm" }));
+  $("#filter-mono").addEventListener("click", () => editImage({ filter: state.edit.filter === "mono" ? "none" : "mono" }));
+  $("#save-edit").addEventListener("click", saveEditedImage);
+
+  $("#export-button").addEventListener("click", exportZip);
+  $("#metadata-export").addEventListener("click", exportMetadata);
+  $("#share-button").addEventListener("click", shareApp);
+  $("#tutorial-button").addEventListener("click", () => $("#tutorial-modal").classList.remove("hidden"));
+  $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
+  $("#language-toggle").addEventListener("click", () => {
+    state.lang = state.lang === "de" ? "en" : "de";
+    localStorage.setItem("mealvault-lang", state.lang);
+    applyLanguage();
+  });
+}
+
+function applyLanguage() {
+  $$("[data-i18n]").forEach((node) => {
+    node.textContent = translations[state.lang][node.dataset.i18n] || node.textContent;
+  });
+  $("#language-toggle").textContent = state.lang.toUpperCase();
+}
+
+function switchView(view) {
+  state.activeView = view;
+  $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  $$(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}-view`));
+  const titleMap = { gallery: "galleryTitle", upload: "upload", stats: "stats", settings: "settings" };
+  $("#view-title").textContent = translations[state.lang][titleMap[view]];
+  if (view === "stats") renderStats();
+}
+
+function clearFilters() {
+  $("#search-input").value = "";
+  $("#date-from").value = "";
+  $("#date-to").value = "";
+  $("#category-filter").value = "";
+  $("#tag-filter").value = "";
+  state.quick = "all";
+  $$(".quick-filter").forEach((item) => item.classList.toggle("active", item.dataset.quick === "all"));
+  render();
+}
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+  const uploadList = $("#upload-list");
+  for (const file of files) {
+    const item = document.createElement("div");
+    item.className = "upload-item";
+    item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Import...</strong>`;
+    uploadList.prepend(item);
+    const [dataUrl, buffer] = await Promise.all([readAsDataUrl(file), readAsArrayBuffer(file)]);
+    const exif = parseExif(buffer);
+    const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
+    const photo = {
+      id: crypto.randomUUID(),
+      name: file.name,
+      type: file.type || "image/jpeg",
+      dataUrl,
+      takenAt: created,
+      camera: [exif.make, exif.model].filter(Boolean).join(" ") || "Unbekannt",
+      category: suggestCategory(created),
+      tags: suggestTags(file.name),
+      description: "",
+      favorite: false,
+      createdAt: new Date().toISOString()
+    };
+    await savePhoto(photo);
+    state.photos.unshift(photo);
+    item.querySelector("strong").textContent = "Fertig";
+  }
+  render();
+  switchView("gallery");
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function readAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function parseExif(buffer) {
+  const view = new DataView(buffer);
+  if (view.getUint16(0) !== 0xffd8) return {};
+  let offset = 2;
+  while (offset < view.byteLength) {
+    const marker = view.getUint16(offset);
+    offset += 2;
+    const size = view.getUint16(offset);
+    offset += 2;
+    if (marker === 0xffe1 && getString(view, offset, 4) === "Exif") {
+      return parseTiff(view, offset + 6);
+    }
+    offset += size - 2;
+  }
+  return {};
+}
+
+function parseTiff(view, tiffStart) {
+  const little = getString(view, tiffStart, 2) === "II";
+  const firstIfd = tiffStart + view.getUint32(tiffStart + 4, little);
+  const root = readIfd(view, firstIfd, tiffStart, little);
+  let exif = {};
+  if (root[0x8769]) exif = readIfd(view, tiffStart + root[0x8769], tiffStart, little);
+  const rawDate = exif[0x9003] || root[0x0132];
+  return {
+    make: root[0x010f],
+    model: root[0x0110],
+    takenAt: rawDate ? exifDateToIso(rawDate) : null
+  };
+}
+
+function readIfd(view, offset, tiffStart, little) {
+  const result = {};
+  const entries = view.getUint16(offset, little);
+  for (let i = 0; i < entries; i += 1) {
+    const entry = offset + 2 + i * 12;
+    const tag = view.getUint16(entry, little);
+    const type = view.getUint16(entry + 2, little);
+    const count = view.getUint32(entry + 4, little);
+    const valueOffset = entry + 8;
+    const actual = count <= 4 ? valueOffset : tiffStart + view.getUint32(valueOffset, little);
+    if (type === 2) result[tag] = getString(view, actual, count).replace(/\0/g, "").trim();
+    if (type === 3 && count === 1) result[tag] = view.getUint16(valueOffset, little);
+    if (type === 4 && count === 1) result[tag] = view.getUint32(valueOffset, little);
+  }
+  return result;
+}
+
+function getString(view, offset, length) {
+  let out = "";
+  for (let i = 0; i < length && offset + i < view.byteLength; i += 1) out += String.fromCharCode(view.getUint8(offset + i));
+  return out;
+}
+
+function exifDateToIso(value) {
+  const match = String(value).match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, m, d, h, min, s] = match;
+  return new Date(`${y}-${m}-${d}T${h}:${min}:${s}`).toISOString();
+}
+
+function suggestCategory(isoDate) {
+  const hour = new Date(isoDate).getHours();
+  if (hour < 11) return "Fruehstueck";
+  if (hour < 15) return "Mittagessen";
+  if (hour < 18) return "Snacks";
+  return "Abendessen";
+}
+
+function suggestTags(name) {
+  const lower = name.toLowerCase();
+  const tags = [];
+  [["veggie", "vegetarisch"], ["salad", "salat"], ["asia", "asiatisch"], ["pasta", "pasta"], ["soup", "suppe"], ["cake", "dessert"]]
+    .forEach(([needle, tag]) => { if (lower.includes(needle)) tags.push(tag); });
+  return tags;
+}
+
+function render() {
+  state.filtered = filterPhotos();
+  renderGallery();
+  renderStats();
+}
+
+function filterPhotos() {
+  const query = $("#search-input").value.trim().toLowerCase();
+  const from = $("#date-from").value ? new Date($("#date-from").value) : null;
+  const to = $("#date-to").value ? new Date(`${$("#date-to").value}T23:59:59`) : null;
+  const category = $("#category-filter").value;
+  const tag = $("#tag-filter").value.trim().toLowerCase();
+  const now = new Date();
+  return state.photos.filter((photo) => {
+    const date = new Date(photo.takenAt);
+    const haystack = [photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
+    if (state.quick === "favorites" && !photo.favorite) return false;
+    if (state.quick === "untagged" && photo.tags.length) return false;
+    if (state.quick === "thisMonth" && (date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear())) return false;
+    if (query && !haystack.includes(query)) return false;
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    if (category && photo.category !== category) return false;
+    if (tag && !photo.tags.some((item) => item.toLowerCase().includes(tag))) return false;
+    return true;
+  });
+}
+
+function renderGallery() {
+  const grid = $("#gallery-grid");
+  grid.innerHTML = "";
+  $("#result-count").textContent = `${state.filtered.length} Foto${state.filtered.length === 1 ? "" : "s"}`;
+  $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
+  state.filtered.forEach((photo) => {
+    const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
+    node.querySelector("img").src = photo.dataUrl;
+    node.querySelector("img").alt = photo.description || photo.name;
+    node.querySelector("h3").textContent = photo.category;
+    node.querySelector("p").textContent = formatDate(photo.takenAt);
+    node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
+    node.querySelector(".photo-open").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".favorite-star").addEventListener("click", async () => {
+      photo.favorite = !photo.favorite;
+      await savePhoto(photo);
+      render();
+    });
+    const tagRow = node.querySelector(".tag-row");
+    (photo.tags || []).slice(0, 4).forEach((tag) => {
+      const pill = document.createElement("span");
+      pill.className = "tag-pill";
+      pill.textContent = tag;
+      tagRow.appendChild(pill);
+    });
+    grid.appendChild(node);
+  });
+}
+
+function formatDate(iso) {
+  return new Intl.DateTimeFormat(state.lang === "de" ? "de-DE" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+}
+
+function openDetail(id) {
+  const photo = state.photos.find((item) => item.id === id);
+  if (!photo) return;
+  state.selectedId = id;
+  state.edit = { rotation: 0, filter: "none", cropSquare: false };
+  $("#detail-description").value = photo.description || "";
+  $("#detail-category").value = photo.category;
+  $("#detail-tags").value = (photo.tags || []).join(", ");
+  $("#detail-date").value = toLocalInput(photo.takenAt);
+  $("#detail-camera").textContent = photo.camera || "-";
+  $("#detail-file").textContent = photo.name;
+  $("#favorite-toggle").textContent = photo.favorite ? "★ Favorit" : "☆ Favorit";
+  $("#detail-panel").classList.add("open");
+  $("#detail-panel").setAttribute("aria-hidden", "false");
+  drawSelectedImage();
+}
+
+function closeDetail() {
+  $("#detail-panel").classList.remove("open");
+  $("#detail-panel").setAttribute("aria-hidden", "true");
+}
+
+function toLocalInput(iso) {
+  const date = new Date(iso);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+async function saveDetails(event) {
+  event.preventDefault();
+  const photo = getSelected();
+  if (!photo) return;
+  photo.description = $("#detail-description").value.trim();
+  photo.category = $("#detail-category").value;
+  photo.tags = $("#detail-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  photo.takenAt = new Date($("#detail-date").value).toISOString();
+  await savePhoto(photo);
+  state.photos = await getAllPhotos();
+  render();
+  closeDetail();
+}
+
+function getSelected() {
+  return state.photos.find((photo) => photo.id === state.selectedId);
+}
+
+async function toggleSelectedFavorite() {
+  const photo = getSelected();
+  if (!photo) return;
+  photo.favorite = !photo.favorite;
+  await savePhoto(photo);
+  $("#favorite-toggle").textContent = photo.favorite ? "★ Favorit" : "☆ Favorit";
+  render();
+}
+
+async function deleteSelected() {
+  const photo = getSelected();
+  if (!photo || !confirm("Dieses Foto wirklich loeschen?")) return;
+  await removePhoto(photo.id);
+  state.photos = state.photos.filter((item) => item.id !== photo.id);
+  render();
+  closeDetail();
+}
+
+function editImage(changes) {
+  Object.assign(state.edit, changes);
+  drawSelectedImage();
+}
+
+function drawSelectedImage() {
+  const photo = getSelected();
+  if (!photo) return;
+  const img = new Image();
+  img.onload = () => {
+    const canvas = $("#edit-canvas");
+    const ctx = canvas.getContext("2d");
+    const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
+    const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
+    const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
+    const sw = sourceSize || img.width;
+    const sh = sourceSize || img.height;
+    const rotated = Math.abs(state.edit.rotation % 180) === 90;
+    canvas.width = rotated ? sh : sw;
+    canvas.height = rotated ? sw : sh;
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((state.edit.rotation * Math.PI) / 180);
+    ctx.filter = state.edit.filter === "warm" ? "saturate(1.18) sepia(0.18)" : state.edit.filter === "mono" ? "grayscale(1) contrast(1.08)" : "none";
+    ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+    ctx.restore();
+  };
+  img.src = photo.dataUrl;
+}
+
+async function saveEditedImage() {
+  const photo = getSelected();
+  if (!photo) return;
+  photo.dataUrl = $("#edit-canvas").toDataURL(photo.type || "image/jpeg", 0.92);
+  await savePhoto(photo);
+  render();
+}
+
+function renderStats() {
+  $("#stat-total").textContent = state.photos.length;
+  $("#stat-favorites").textContent = state.photos.filter((photo) => photo.favorite).length;
+  const categoryCounts = countBy(state.photos, (photo) => photo.category);
+  const tagCounts = countTags(state.photos);
+  $("#stat-top-category").textContent = topKey(categoryCounts) || "-";
+  $("#stat-top-tag").textContent = topKey(tagCounts) || "-";
+  renderBars("#category-bars", categoryCounts);
+  renderBars("#tag-bars", tagCounts);
+}
+
+function countBy(items, getter) {
+  return items.reduce((acc, item) => {
+    const key = getter(item) || "Unbekannt";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function countTags(items) {
+  return items.reduce((acc, photo) => {
+    (photo.tags || []).forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; });
+    return acc;
+  }, {});
+}
+
+function topKey(counts) {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function renderBars(selector, counts) {
+  const box = $(selector);
+  box.innerHTML = "";
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const max = Math.max(1, ...entries.map((entry) => entry[1]));
+  entries.forEach(([label, count]) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `<span>${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${(count / max) * 100}%"></div></div><strong>${count}</strong>`;
+    box.appendChild(row);
+  });
+  if (!entries.length) box.textContent = "-";
+}
+
+async function exportMetadata() {
+  downloadBlob(new Blob([JSON.stringify(state.photos.map(withoutDataUrl), null, 2)], { type: "application/json" }), "mealvault-metadaten.json");
+}
+
+async function exportZip() {
+  const files = state.filtered.length ? state.filtered : state.photos;
+  if (!files.length) return;
+  const zipFiles = files.map((photo) => ({
+    name: safeFileName(`${photo.category}-${photo.name}`),
+    data: base64ToUint8(photo.dataUrl)
+  }));
+  zipFiles.push({
+    name: "metadata.json",
+    data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2))
+  });
+  const zip = createZip(zipFiles);
+  downloadBlob(new Blob([zip], { type: "application/zip" }), `mealvault-export-${new Date().toISOString().slice(0, 10)}.zip`);
+}
+
+function withoutDataUrl(photo) {
+  const { dataUrl, ...meta } = photo;
+  return meta;
+}
+
+function base64ToUint8(dataUrl) {
+  const base64 = dataUrl.split(",")[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function createZip(files) {
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  files.forEach((file) => {
+    const name = new TextEncoder().encode(file.name);
+    const data = file.data;
+    const crc = crc32(data);
+    const local = new Uint8Array(30 + name.length);
+    const view = new DataView(local.buffer);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(8, 0, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, data.length, true);
+    view.setUint32(22, data.length, true);
+    view.setUint16(26, name.length, true);
+    local.set(name, 30);
+    chunks.push(local, data);
+    const header = new Uint8Array(46 + name.length);
+    const hv = new DataView(header.buffer);
+    hv.setUint32(0, 0x02014b50, true);
+    hv.setUint16(4, 20, true);
+    hv.setUint16(6, 20, true);
+    hv.setUint32(16, crc, true);
+    hv.setUint32(20, data.length, true);
+    hv.setUint32(24, data.length, true);
+    hv.setUint16(28, name.length, true);
+    hv.setUint32(42, offset, true);
+    header.set(name, 46);
+    central.push(header);
+    offset += local.length + data.length;
+  });
+  const centralSize = central.reduce((sum, item) => sum + item.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralSize, true);
+  ev.setUint32(16, offset, true);
+  return concatUint8([...chunks, ...central, end]);
+}
+
+function crc32(data) {
+  let crc = -1;
+  for (let i = 0; i < data.length; i += 1) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+function concatUint8(arrays) {
+  const total = arrays.reduce((sum, item) => sum + item.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  arrays.forEach((item) => {
+    out.set(item, offset);
+    offset += item.length;
+  });
+  return out;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function shareApp() {
+  const text = `MealVault: ${state.filtered.length} gefilterte Food-Fotos`;
+  if (navigator.share) {
+    await navigator.share({ title: "MealVault", text, url: location.href });
+  } else {
+    await navigator.clipboard.writeText(location.href);
+    alert("Link wurde in die Zwischenablage kopiert.");
+  }
+}
+
+function safeFileName(name) {
+  return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+}
