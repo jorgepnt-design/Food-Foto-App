@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: food-foto-app-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GCS_BUCKET_NAME
+        sync: false
+      - key: GCP_PROJECT_ID
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "25"

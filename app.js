@@ -17,10 +17,11 @@ const translations = {
     categoryDistribution: "Kategorien", tagDistribution: "Beliebte Tags", authTitle: "Login & Datenschutz",
     authText: "Diese Version läuft lokal ohne Server. OAuth/Auth0 kann im Backend ergänzt werden.",
     demoUser: "Demo-Nutzer", cloudTitle: "Cloud-Speicher",
-    cloudText: "Render, S3, Firebase Storage oder Google Cloud können über API-Endpunkte angebunden werden.",
+    cloudText: "Google Cloud Storage kann über ein Render-Backend angebunden werden.",
     storageProvider: "Provider", apiEndpoint: "API-Endpunkt", backupTitle: "Backups",
     backupText: "Exportiere regelmäßig ZIP-Dateien als lokale Sicherung.", exportMetadata: "Metadaten exportieren",
-    details: "Details", saveImage: "Bild speichern", description: "Beschreibung", tagsComma: "Tags, mit Komma getrennt",
+    details: "Details", saveImage: "Bild speichern", resetEdit: "Reset", brightness: "Helligkeit", contrast: "Kontrast",
+    saturation: "Sättigung", description: "Beschreibung", tagsComma: "Tags, mit Komma getrennt",
     takenAt: "Aufgenommen am", favorite: "Favorit", saveMetadata: "Metadaten speichern", delete: "Löschen",
     tutorialTitle: "Kurze Einführung", tutorial1: "Ziehe Food-Fotos in den Upload-Bereich.",
     tutorial2: "Prüfe EXIF-Datum, Kategorie und Tags in der Detailansicht.",
@@ -41,10 +42,11 @@ const translations = {
     categoryDistribution: "Categories", tagDistribution: "Popular tags", authTitle: "Login & privacy",
     authText: "This version runs locally without a server. OAuth/Auth0 can be added in the backend.",
     demoUser: "Demo user", cloudTitle: "Cloud storage",
-    cloudText: "Render, S3, Firebase Storage or Google Cloud can be connected through API endpoints.",
+    cloudText: "Google Cloud Storage can be connected through a Render backend.",
     storageProvider: "Provider", apiEndpoint: "API endpoint", backupTitle: "Backups",
     backupText: "Export ZIP files regularly as local backups.", exportMetadata: "Export metadata",
-    details: "Details", saveImage: "Save image", description: "Description", tagsComma: "Tags, comma separated",
+    details: "Details", saveImage: "Save image", resetEdit: "Reset", brightness: "Brightness", contrast: "Contrast",
+    saturation: "Saturation", description: "Description", tagsComma: "Tags, comma separated",
     takenAt: "Taken at", favorite: "Favorite", saveMetadata: "Save metadata", delete: "Delete",
     tutorialTitle: "Quick start", tutorial1: "Drag food photos into the upload area.",
     tutorial2: "Review EXIF date, category and tags in the detail view.",
@@ -61,7 +63,7 @@ const state = {
   quick: "all",
   lang: localStorage.getItem("mealvault-lang") || "de",
   selectedId: null,
-  edit: { rotation: 0, filter: "none", cropSquare: false }
+  edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -119,8 +121,7 @@ function removePhoto(id) {
 }
 
 function setupCategorySelects() {
-  const html = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
-  $("#category-filter").innerHTML = html;
+  $("#category-filter").innerHTML = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
   $("#detail-category").innerHTML = categories.map((c) => `<option>${c}</option>`).join("");
 }
 
@@ -132,9 +133,7 @@ function bindEvents() {
     switchView("gallery");
     render();
   }));
-  ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => {
-    $(`#${id}`).addEventListener("input", render);
-  });
+  ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
   $("#clear-filters").addEventListener("click", clearFilters);
   $$("[data-go-upload]").forEach((button) => button.addEventListener("click", () => switchView("upload")));
   $$(".density").forEach((button) => button.addEventListener("click", () => {
@@ -161,9 +160,15 @@ function bindEvents() {
   $("#rotate-left").addEventListener("click", () => editImage({ rotation: state.edit.rotation - 90 }));
   $("#rotate-right").addEventListener("click", () => editImage({ rotation: state.edit.rotation + 90 }));
   $("#crop-square").addEventListener("click", () => editImage({ cropSquare: !state.edit.cropSquare }));
+  $("#flip-horizontal").addEventListener("click", () => editImage({ flipH: !state.edit.flipH }));
+  $("#flip-vertical").addEventListener("click", () => editImage({ flipV: !state.edit.flipV }));
   $("#filter-warm").addEventListener("click", () => editImage({ filter: state.edit.filter === "warm" ? "none" : "warm" }));
   $("#filter-mono").addEventListener("click", () => editImage({ filter: state.edit.filter === "mono" ? "none" : "mono" }));
+  $("#reset-edit").addEventListener("click", resetEdit);
   $("#save-edit").addEventListener("click", saveEditedImage);
+  $("#brightness-range").addEventListener("input", (event) => editImage({ brightness: Number(event.target.value) }));
+  $("#contrast-range").addEventListener("input", (event) => editImage({ contrast: Number(event.target.value) }));
+  $("#saturation-range").addEventListener("input", (event) => editImage({ saturation: Number(event.target.value) }));
 
   $("#export-button").addEventListener("click", exportZip);
   $("#metadata-export").addEventListener("click", exportMetadata);
@@ -175,6 +180,14 @@ function bindEvents() {
     localStorage.setItem("mealvault-lang", state.lang);
     applyLanguage();
   });
+  $("#cloud-provider").value = localStorage.getItem("mealvault-cloud-provider") || "Google Cloud Storage";
+  $("#api-endpoint").value = localStorage.getItem("mealvault-api-endpoint") || "";
+  $("#cloud-provider").addEventListener("change", () => localStorage.setItem("mealvault-cloud-provider", $("#cloud-provider").value));
+  $("#api-endpoint").addEventListener("input", () => {
+    localStorage.setItem("mealvault-api-endpoint", $("#api-endpoint").value.trim());
+    updateCloudStatus();
+  });
+  updateCloudStatus();
 }
 
 function applyLanguage() {
@@ -228,12 +241,60 @@ async function handleFiles(fileList) {
       favorite: false,
       createdAt: new Date().toISOString()
     };
+    item.querySelector("strong").textContent = getApiEndpoint() ? "Cloud-Upload..." : "Lokal...";
+    try {
+      const cloud = await uploadPhotoToCloud(file, photo);
+      if (cloud) {
+        photo.storage = "gcs";
+        photo.cloudObject = cloud.objectName;
+        photo.cloudUrl = cloud.url;
+      }
+    } catch (error) {
+      photo.storage = "local";
+      photo.cloudError = error.message;
+      item.querySelector("strong").textContent = "Lokal gespeichert";
+    }
     await savePhoto(photo);
     state.photos.unshift(photo);
     item.querySelector("strong").textContent = "Fertig";
   }
   render();
   switchView("gallery");
+}
+
+function getApiEndpoint() {
+  return ($("#api-endpoint").value || localStorage.getItem("mealvault-api-endpoint") || "").trim().replace(/\/$/, "");
+}
+
+function updateCloudStatus() {
+  const status = $("#cloud-status");
+  if (!status) return;
+  status.textContent = getApiEndpoint()
+    ? "Cloud-Upload aktiv: Neue und bearbeitete Bilder werden an die Render-API gesendet."
+    : "Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.";
+}
+
+async function uploadPhotoToCloud(file, photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return null;
+  const form = new FormData();
+  form.append("image", file, file.name);
+  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Cloud-Upload fehlgeschlagen: ${response.status}`);
+  return response.json();
+}
+
+async function uploadEditedImageToCloud(blob, photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return null;
+  const form = new FormData();
+  form.append("image", blob, photo.name || "edited-image.jpg");
+  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
+  const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Cloud-Upload fehlgeschlagen: ${response.status}`);
+  return response.json();
 }
 
 function readAsDataUrl(file) {
@@ -263,9 +324,7 @@ function parseExif(buffer) {
     offset += 2;
     const size = view.getUint16(offset);
     offset += 2;
-    if (marker === 0xffe1 && getString(view, offset, 4) === "Exif") {
-      return parseTiff(view, offset + 6);
-    }
+    if (marker === 0xffe1 && getString(view, offset, 4) === "Exif") return parseTiff(view, offset + 6);
     offset += size - 2;
   }
   return {};
@@ -278,11 +337,7 @@ function parseTiff(view, tiffStart) {
   let exif = {};
   if (root[0x8769]) exif = readIfd(view, tiffStart + root[0x8769], tiffStart, little);
   const rawDate = exif[0x9003] || root[0x0132];
-  return {
-    make: root[0x010f],
-    model: root[0x0110],
-    takenAt: rawDate ? exifDateToIso(rawDate) : null
-  };
+  return { make: root[0x010f], model: root[0x0110], takenAt: rawDate ? exifDateToIso(rawDate) : null };
 }
 
 function readIfd(view, offset, tiffStart, little) {
@@ -396,7 +451,7 @@ function openDetail(id) {
   const photo = state.photos.find((item) => item.id === id);
   if (!photo) return;
   state.selectedId = id;
-  state.edit = { rotation: 0, filter: "none", cropSquare: false };
+  resetEditState();
   $("#detail-description").value = photo.description || "";
   $("#detail-category").value = photo.category;
   $("#detail-tags").value = (photo.tags || []).join(", ");
@@ -461,6 +516,18 @@ function editImage(changes) {
   drawSelectedImage();
 }
 
+function resetEdit() {
+  resetEditState();
+  drawSelectedImage();
+}
+
+function resetEditState() {
+  state.edit = { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 };
+  $("#brightness-range").value = "100";
+  $("#contrast-range").value = "100";
+  $("#saturation-range").value = "100";
+}
+
 function drawSelectedImage() {
   const photo = getSelected();
   if (!photo) return;
@@ -479,18 +546,46 @@ function drawSelectedImage() {
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((state.edit.rotation * Math.PI) / 180);
-    ctx.filter = state.edit.filter === "warm" ? "saturate(1.18) sepia(0.18)" : state.edit.filter === "mono" ? "grayscale(1) contrast(1.08)" : "none";
+    ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
+    ctx.filter = buildCanvasFilter();
     ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
     ctx.restore();
   };
   img.src = photo.dataUrl;
 }
 
+function buildCanvasFilter() {
+  const filters = [
+    `brightness(${state.edit.brightness}%)`,
+    `contrast(${state.edit.contrast}%)`,
+    `saturate(${state.edit.saturation}%)`
+  ];
+  if (state.edit.filter === "warm") filters.push("sepia(18%)", "saturate(118%)");
+  if (state.edit.filter === "mono") filters.push("grayscale(100%)", "contrast(108%)");
+  return filters.join(" ");
+}
+
 async function saveEditedImage() {
   const photo = getSelected();
   if (!photo) return;
-  photo.dataUrl = $("#edit-canvas").toDataURL(photo.type || "image/jpeg", 0.92);
+  const canvas = $("#edit-canvas");
+  photo.dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
+  if (getApiEndpoint()) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, photo.type || "image/jpeg", 0.92));
+    try {
+      const cloud = await uploadEditedImageToCloud(blob, photo);
+      if (cloud) {
+        photo.storage = "gcs";
+        photo.cloudObject = cloud.objectName;
+        photo.cloudUrl = cloud.url;
+        delete photo.cloudError;
+      }
+    } catch (error) {
+      photo.cloudError = error.message;
+    }
+  }
   await savePhoto(photo);
+  resetEditState();
   render();
 }
 
@@ -545,14 +640,8 @@ async function exportMetadata() {
 async function exportZip() {
   const files = state.filtered.length ? state.filtered : state.photos;
   if (!files.length) return;
-  const zipFiles = files.map((photo) => ({
-    name: safeFileName(`${photo.category}-${photo.name}`),
-    data: base64ToUint8(photo.dataUrl)
-  }));
-  zipFiles.push({
-    name: "metadata.json",
-    data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2))
-  });
+  const zipFiles = files.map((photo) => ({ name: safeFileName(`${photo.category}-${photo.name}`), data: base64ToUint8(photo.dataUrl) }));
+  zipFiles.push({ name: "metadata.json", data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2)) });
   const zip = createZip(zipFiles);
   downloadBlob(new Blob([zip], { type: "application/zip" }), `mealvault-export-${new Date().toISOString().slice(0, 10)}.zip`);
 }
@@ -645,9 +734,8 @@ function downloadBlob(blob, filename) {
 
 async function shareApp() {
   const text = `MealVault: ${state.filtered.length} gefilterte Food-Fotos`;
-  if (navigator.share) {
-    await navigator.share({ title: "MealVault", text, url: location.href });
-  } else {
+  if (navigator.share) await navigator.share({ title: "MealVault", text, url: location.href });
+  else {
     await navigator.clipboard.writeText(location.href);
     alert("Link wurde in die Zwischenablage kopiert.");
   }

@@ -19,18 +19,10 @@
       </div>
 
       <nav class="nav-tabs" aria-label="Ansichten">
-        <button class="nav-tab active" data-view="gallery" title="Galerie">
-          <span class="icon">▦</span><span data-i18n="gallery">Galerie</span>
-        </button>
-        <button class="nav-tab" data-view="upload" title="Upload">
-          <span class="icon">⇧</span><span data-i18n="upload">Upload</span>
-        </button>
-        <button class="nav-tab" data-view="stats" title="Statistiken">
-          <span class="icon">◷</span><span data-i18n="stats">Statistiken</span>
-        </button>
-        <button class="nav-tab" data-view="settings" title="Einstellungen">
-          <span class="icon">⚙</span><span data-i18n="settings">Einstellungen</span>
-        </button>
+        <button class="nav-tab active" data-view="gallery" title="Galerie"><span class="icon">▦</span><span data-i18n="gallery">Galerie</span></button>
+        <button class="nav-tab" data-view="upload" title="Upload"><span class="icon">⇧</span><span data-i18n="upload">Upload</span></button>
+        <button class="nav-tab" data-view="stats" title="Statistiken"><span class="icon">◷</span><span data-i18n="stats">Statistiken</span></button>
+        <button class="nav-tab" data-view="settings" title="Einstellungen"><span class="icon">⚙</span><span data-i18n="settings">Einstellungen</span></button>
       </nav>
 
       <section class="sidebar-section">
@@ -63,26 +55,11 @@
 
       <section id="gallery-view" class="view active">
         <div class="filter-bar">
-          <label class="search-field">
-            <span data-i18n="search">Suche</span>
-            <input id="search-input" type="search" placeholder="Tags, Kategorie, Beschreibung..." />
-          </label>
-          <label>
-            <span data-i18n="from">Von</span>
-            <input id="date-from" type="date" />
-          </label>
-          <label>
-            <span data-i18n="to">Bis</span>
-            <input id="date-to" type="date" />
-          </label>
-          <label>
-            <span data-i18n="category">Kategorie</span>
-            <select id="category-filter"></select>
-          </label>
-          <label>
-            <span data-i18n="tag">Tag</span>
-            <input id="tag-filter" type="text" placeholder="vegetarisch" />
-          </label>
+          <label class="search-field"><span data-i18n="search">Suche</span><input id="search-input" type="search" placeholder="Tags, Kategorie, Beschreibung..." /></label>
+          <label><span data-i18n="from">Von</span><input id="date-from" type="date" /></label>
+          <label><span data-i18n="to">Bis</span><input id="date-to" type="date" /></label>
+          <label><span data-i18n="category">Kategorie</span><select id="category-filter"></select></label>
+          <label><span data-i18n="tag">Tag</span><input id="tag-filter" type="text" placeholder="vegetarisch" /></label>
           <button id="clear-filters" class="secondary-button" data-i18n="reset">Zurücksetzen</button>
         </div>
 
@@ -116,32 +93,14 @@
 
       <section id="stats-view" class="view">
         <div class="dashboard">
-          <article class="stat-card">
-            <span data-i18n="totalPhotos">Fotos gesamt</span>
-            <strong id="stat-total">0</strong>
-          </article>
-          <article class="stat-card">
-            <span data-i18n="favoritePhotos">Favoriten</span>
-            <strong id="stat-favorites">0</strong>
-          </article>
-          <article class="stat-card">
-            <span data-i18n="topCategory">Top-Kategorie</span>
-            <strong id="stat-top-category">-</strong>
-          </article>
-          <article class="stat-card">
-            <span data-i18n="topTag">Top-Tag</span>
-            <strong id="stat-top-tag">-</strong>
-          </article>
+          <article class="stat-card"><span data-i18n="totalPhotos">Fotos gesamt</span><strong id="stat-total">0</strong></article>
+          <article class="stat-card"><span data-i18n="favoritePhotos">Favoriten</span><strong id="stat-favorites">0</strong></article>
+          <article class="stat-card"><span data-i18n="topCategory">Top-Kategorie</span><strong id="stat-top-category">-</strong></article>
+          <article class="stat-card"><span data-i18n="topTag">Top-Tag</span><strong id="stat-top-tag">-</strong></article>
         </div>
         <div class="charts">
-          <section>
-            <h3 data-i18n="categoryDistribution">Kategorien</h3>
-            <div id="category-bars" class="bars"></div>
-          </section>
-          <section>
-            <h3 data-i18n="tagDistribution">Beliebte Tags</h3>
-            <div id="tag-bars" class="bars"></div>
-          </section>
+          <section><h3 data-i18n="categoryDistribution">Kategorien</h3><div id="category-bars" class="bars"></div></section>
+          <section><h3 data-i18n="tagDistribution">Beliebte Tags</h3><div id="tag-bars" class="bars"></div></section>
         </div>
       </section>
 
@@ -150,27 +109,14 @@
           <section class="settings-panel">
             <h3 data-i18n="authTitle">Login & Datenschutz</h3>
             <p data-i18n="authText">Diese Version läuft lokal ohne Server. OAuth/Auth0 kann im Backend ergänzt werden.</p>
-            <label>
-              <span data-i18n="demoUser">Demo-Nutzer</span>
-              <input id="demo-user" type="text" value="jorge@example.com" />
-            </label>
+            <label><span data-i18n="demoUser">Demo-Nutzer</span><input id="demo-user" type="text" value="jorge@example.com" /></label>
           </section>
           <section class="settings-panel">
             <h3 data-i18n="cloudTitle">Cloud-Speicher</h3>
-            <p data-i18n="cloudText">Render, S3, Firebase Storage oder Google Cloud können über API-Endpunkte angebunden werden.</p>
-            <label>
-              <span data-i18n="storageProvider">Provider</span>
-              <select id="cloud-provider">
-                <option>Render</option>
-                <option>AWS S3</option>
-                <option>Firebase Storage</option>
-                <option>Google Cloud Storage</option>
-              </select>
-            </label>
-            <label>
-              <span data-i18n="apiEndpoint">API-Endpunkt</span>
-              <input id="api-endpoint" type="url" placeholder="https://deine-api.onrender.com" />
-            </label>
+            <p data-i18n="cloudText">Google Cloud Storage kann über ein Render-Backend angebunden werden.</p>
+            <label><span data-i18n="storageProvider">Provider</span><select id="cloud-provider"><option>Google Cloud Storage</option><option>Render Disk</option><option>AWS S3</option><option>Firebase Storage</option></select></label>
+            <label><span data-i18n="apiEndpoint">API-Endpunkt</span><input id="api-endpoint" type="url" placeholder="https://deine-api.onrender.com" /></label>
+            <p id="cloud-status" class="cloud-status">Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.</p>
           </section>
           <section class="settings-panel">
             <h3 data-i18n="backupTitle">Backups</h3>
@@ -183,38 +129,31 @@
   </div>
 
   <aside id="detail-panel" class="detail-panel" aria-hidden="true">
-    <div class="detail-header">
-      <h2 data-i18n="details">Details</h2>
-      <button id="close-detail" class="icon-button" title="Schließen">×</button>
-    </div>
+    <div class="detail-header"><h2 data-i18n="details">Details</h2><button id="close-detail" class="icon-button" title="Schließen">×</button></div>
     <div class="image-editor">
       <canvas id="edit-canvas"></canvas>
       <div class="edit-tools">
         <button id="rotate-left" class="icon-button" title="Links drehen">↺</button>
         <button id="rotate-right" class="icon-button" title="Rechts drehen">↻</button>
         <button id="crop-square" class="icon-button" title="Quadratisch zuschneiden">□</button>
+        <button id="flip-horizontal" class="icon-button" title="Horizontal spiegeln">⇄</button>
+        <button id="flip-vertical" class="icon-button" title="Vertikal spiegeln">⇅</button>
         <button id="filter-warm" class="icon-button" title="Warmer Filter">◐</button>
         <button id="filter-mono" class="icon-button" title="Schwarz-Weiß">◑</button>
+        <button id="reset-edit" class="secondary-button" data-i18n="resetEdit">Reset</button>
         <button id="save-edit" class="primary-button" data-i18n="saveImage">Bild speichern</button>
+      </div>
+      <div class="adjust-tools" aria-label="Bildanpassungen">
+        <label><span data-i18n="brightness">Helligkeit</span><input id="brightness-range" type="range" min="50" max="150" value="100" /></label>
+        <label><span data-i18n="contrast">Kontrast</span><input id="contrast-range" type="range" min="50" max="150" value="100" /></label>
+        <label><span data-i18n="saturation">Sättigung</span><input id="saturation-range" type="range" min="0" max="200" value="100" /></label>
       </div>
     </div>
     <form id="detail-form" class="detail-form">
-      <label>
-        <span data-i18n="description">Beschreibung</span>
-        <textarea id="detail-description" rows="3"></textarea>
-      </label>
-      <label>
-        <span data-i18n="category">Kategorie</span>
-        <select id="detail-category"></select>
-      </label>
-      <label>
-        <span data-i18n="tagsComma">Tags, mit Komma getrennt</span>
-        <input id="detail-tags" type="text" />
-      </label>
-      <label>
-        <span data-i18n="takenAt">Aufgenommen am</span>
-        <input id="detail-date" type="datetime-local" />
-      </label>
+      <label><span data-i18n="description">Beschreibung</span><textarea id="detail-description" rows="3"></textarea></label>
+      <label><span data-i18n="category">Kategorie</span><select id="detail-category"></select></label>
+      <label><span data-i18n="tagsComma">Tags, mit Komma getrennt</span><input id="detail-tags" type="text" /></label>
+      <label><span data-i18n="takenAt">Aufgenommen am</span><input id="detail-date" type="datetime-local" /></label>
       <div class="meta-list">
         <p><span>Kamera:</span> <strong id="detail-camera">-</strong></p>
         <p><span>Datei:</span> <strong id="detail-file">-</strong></p>
@@ -242,16 +181,8 @@
 
   <template id="photo-card-template">
     <article class="photo-card">
-      <button class="photo-open" type="button">
-        <img alt="" loading="lazy" />
-      </button>
-      <div class="photo-info">
-        <div>
-          <h3></h3>
-          <p></p>
-        </div>
-        <button class="favorite-star" type="button" title="Favorit">☆</button>
-      </div>
+      <button class="photo-open" type="button"><img alt="" loading="lazy" /></button>
+      <div class="photo-info"><div><h3></h3><p></p></div><button class="favorite-star" type="button" title="Favorit">☆</button></div>
       <div class="tag-row"></div>
     </article>
   </template>

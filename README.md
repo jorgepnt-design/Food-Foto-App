@@ -1,39 +1,49 @@
 # MealVault - Food Foto Organizer
 
-Statische Web-App zum Organisieren, Filtern, Bearbeiten und Exportieren von Bildern gekochter Gerichte.
+Statische Web-App für das Repository `jorgepnt-design/Food-Foto-App`.
 
 ## Start
 
-Öffne `index.html` direkt im Browser oder starte einen lokalen Server:
+Die App ist ohne Build-Schritt lauffähig:
 
-```powershell
-python -m http.server 8080
-```
+1. `index.html` im Browser öffnen
+2. Food-Fotos hochladen
+3. Kategorien, Tags und Beschreibungen pflegen
 
-Danach: `http://localhost:8080/food-photo-app/`
+## Funktionen
 
-## Enthaltene Funktionen
-
-- Drag-and-Drop-Upload für mehrere Bilder
-- lokale Speicherung in IndexedDB
-- automatisches Auslesen wichtiger JPEG-EXIF-Daten wie Datum, Hersteller und Modell
-- Kategorien, Tags, Beschreibung, Favoriten
+- Drag-and-Drop-Upload mehrerer Bilder
+- Speicherung im Browser per IndexedDB
+- JPEG-EXIF-Auswertung für Aufnahmedatum, Kamerahersteller und Modell
+- Kategorien, Tags, Beschreibungen und Favoriten
 - Filter nach Datum, Kategorie, Tags und Volltextsuche
 - Galerie- und Detailansicht
 - einfache Bildbearbeitung: drehen, quadratisch zuschneiden, warmer Filter, Schwarz-Weiß
-- Dashboard mit Kategorie- und Tag-Statistiken
-- ZIP-Export inklusive Metadaten
-- Teilen per Web Share API oder Link in Zwischenablage
+- Statistik-Dashboard
+- ZIP-Export inklusive `metadata.json`
+- Teilen per Web Share API oder Zwischenablage
 - Deutsch/Englisch-Umschaltung
-- Cloud/API-Konfigurationsbereich als Vorbereitung für Render, S3, Firebase oder Google Cloud
+- Vercel-geeignete Static-Site-Struktur
+- optionaler Cloud-Upload nach Google Cloud Storage über ein Render-Backend
 
-## Nächste Backend-Ausbaustufe
+## Frontend-Deployment auf Vercel
 
-Für produktive Cloud-Speicherung sollte ein Backend mit Authentifizierung ergänzt werden:
+Bei Vercel als Projekt-Root dieses Repository wählen. Es ist kein Build Command nötig, weil `index.html`, `styles.css` und `app.js` direkt ausgeliefert werden.
 
-- Node.js/Express oder Python/Flask
-- PostgreSQL oder MongoDB für Metadaten
-- Render als API-Host
-- S3, Firebase Storage oder Google Cloud Storage für Originalbilder
-- OAuth/Auth0 für Login
-- serverseitige Verschlüsselung, Backup-Jobs und signierte Download-Links
+## Cloud-Speicherung mit Google Cloud Storage und Render
+
+Der Ordner `server/` enthält eine Render-fähige Node/Express-API. Sie nimmt Bild-Uploads entgegen und speichert die Dateien in Google Cloud Storage.
+
+Benötigte Render-Umgebungsvariablen:
+
+- `GCS_BUCKET_NAME`: Name des Buckets
+- `GCP_PROJECT_ID`: Google-Cloud-Projekt
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON`: Service-Account-JSON als Secret
+- `CORS_ORIGIN`: erlaubte Frontend-URL, z. B. `https://jorgepnt-design.github.io`
+- `MAX_UPLOAD_MB`: Upload-Limit, Standard `25`
+
+Der Service Account braucht mindestens Schreibrechte auf den Bucket, z. B. die Rolle `Storage Object Admin` für diesen Bucket. Wenn der Bucket privat bleibt, liefert die API signierte Lese-URLs zurück. Wenn du öffentliche oder CDN-URLs nutzen willst, setze zusätzlich `GCS_PUBLIC_BASE_URL`.
+
+In der App unter `Einstellungen` den Render-API-Endpunkt eintragen, z. B. `https://food-foto-app-api.onrender.com`. Ab dann werden neue und bearbeitete Bilder zusätzlich in Google Cloud Storage gespeichert.
+
+Für die nächste Ausbaustufe sollten Metadaten zusätzlich in PostgreSQL gespeichert und OAuth/Auth0 aktiviert werden.
