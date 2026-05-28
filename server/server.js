@@ -12,7 +12,7 @@ const upload = multer({
 
 const bucketName = process.env.GCS_BUCKET_NAME;
 const publicBaseUrl = process.env.GCS_PUBLIC_BASE_URL;
-const allowedOrigins = (process.env.CORS_ORIGIN || "*").split(",").map((origin) => origin.trim());
+const allowedOrigins = (process.env.CORS_ORIGIN || "*").split(",").map((origin) => origin.trim()).filter(Boolean);
 
 if (!bucketName) {
   throw new Error("GCS_BUCKET_NAME is required");
@@ -21,12 +21,19 @@ if (!bucketName) {
 const storage = new Storage(getStorageOptions());
 const bucket = storage.bucket(bucketName);
 
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error("Origin not allowed by CORS"));
-  }
-}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowOrigin = !origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)
+    ? (origin || "*")
+    : allowedOrigins[0] || "*";
+  res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (req, res) => {
