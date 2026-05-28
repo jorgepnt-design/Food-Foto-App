@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#2f6f63" />
   <meta name="apple-mobile-web-app-title" content="Foodporn" />
   <title>Foodporn - Food Foto Organizer</title>
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260528-4" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260528-4" />
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260528-4" />
-  <link rel="manifest" href="site.webmanifest?v=foodporn-20260528-4" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260528-4" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260528-5" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260528-5" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260528-5" />
+  <link rel="manifest" href="site.webmanifest?v=foodporn-20260528-5" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260528-5" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -196,6 +196,30 @@
     </article>
   </template>
 
-  <script src="app.js?v=foodporn-20260528-4"></script>
+  <script src="app.js?v=foodporn-20260528-5" onerror="document.body.classList.add('script-failed')"></script>
+  <script>
+    window.addEventListener("error", function (event) {
+      var main = document.querySelector(".main");
+      if (!main || document.querySelector(".startup-error")) return;
+      var box = document.createElement("div");
+      box.className = "startup-error";
+      box.textContent = "App-Fehler: " + (event.message || "JavaScript konnte nicht geladen werden");
+      main.insertBefore(box, main.firstChild);
+    });
+
+    document.addEventListener("click", function (event) {
+      var nav = event.target.closest && event.target.closest("[data-view]");
+      if (!nav) return;
+      document.querySelectorAll(".nav-tab").forEach(function (button) {
+        button.classList.toggle("active", button === nav);
+      });
+      document.querySelectorAll(".view").forEach(function (section) {
+        section.classList.toggle("active", section.id === nav.getAttribute("data-view") + "-view");
+      });
+      var title = document.getElementById("view-title");
+      var label = nav.querySelector("[data-i18n]");
+      if (title && label) title.textContent = label.textContent === "Galerie" ? "Essensbilder" : label.textContent;
+    });
+  </script>
 </body>
 </html>
