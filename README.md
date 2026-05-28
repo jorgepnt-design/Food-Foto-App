@@ -46,4 +46,6 @@ Der Service Account braucht mindestens Schreibrechte auf den Bucket, z. B. die R
 
 In der App unter `Einstellungen` den Render-API-Endpunkt eintragen, z. B. `https://food-foto-app-api.onrender.com`. Ab dann werden neue und bearbeitete Bilder zusätzlich in Google Cloud Storage gespeichert.
 
+Der API-Endpunkt wird im Browser gespeichert. Auf jedem neuen Gerät muss er einmal eingetragen werden. Danach kann über `Cloud synchronisieren` die Galerie aus Google Cloud Storage geladen werden.
+
 Für die nächste Ausbaustufe sollten Metadaten zusätzlich in PostgreSQL gespeichert und OAuth/Auth0 aktiviert werden.
