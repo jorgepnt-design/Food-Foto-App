@@ -1,6 +1,6 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
-const categories = ["Fruehstueck", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getraenke", "Sonstiges"];
+const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
 
 const translations = {
   de: {
@@ -9,23 +9,23 @@ const translations = {
     thisMonth: "Dieser Monat", untagged: "Ohne Tags", storage: "Speicherung",
     storageText: "Lokal in IndexedDB. Cloud-Anbindung ist vorbereitet.", workspace: "Private Sammlung",
     galleryTitle: "Essensbilder", tutorial: "Tutorial", share: "Teilen", exportZip: "ZIP exportieren",
-    search: "Suche", from: "Von", to: "Bis", category: "Kategorie", tag: "Tag", reset: "Zuruecksetzen",
+    search: "Suche", from: "Von", to: "Bis", category: "Kategorie", tag: "Tag", reset: "Zurücksetzen",
     emptyTitle: "Noch keine passenden Bilder", emptyText: "Lade Essensfotos hoch oder passe die Filter an.",
     uploadPhotos: "Fotos hochladen", dropTitle: "Bilder hier ablegen",
-    dropText: "Oder anklicken und mehrere Food-Fotos auswaehlen. EXIF-Daten werden automatisch gelesen.",
+    dropText: "Oder anklicken und mehrere Food-Fotos auswählen. EXIF-Daten werden automatisch gelesen.",
     totalPhotos: "Fotos gesamt", favoritePhotos: "Favoriten", topCategory: "Top-Kategorie", topTag: "Top-Tag",
     categoryDistribution: "Kategorien", tagDistribution: "Beliebte Tags", authTitle: "Login & Datenschutz",
-    authText: "Diese Version laeuft lokal ohne Server. OAuth/Auth0 kann im Backend ergaenzt werden.",
+    authText: "Diese Version läuft lokal ohne Server. OAuth/Auth0 kann im Backend ergänzt werden.",
     demoUser: "Demo-Nutzer", cloudTitle: "Cloud-Speicher",
-    cloudText: "Render, S3, Firebase Storage oder Google Cloud koennen ueber API-Endpunkte angebunden werden.",
+    cloudText: "Render, S3, Firebase Storage oder Google Cloud können über API-Endpunkte angebunden werden.",
     storageProvider: "Provider", apiEndpoint: "API-Endpunkt", backupTitle: "Backups",
-    backupText: "Exportiere regelmaessig ZIP-Dateien als lokale Sicherung.", exportMetadata: "Metadaten exportieren",
+    backupText: "Exportiere regelmäßig ZIP-Dateien als lokale Sicherung.", exportMetadata: "Metadaten exportieren",
     details: "Details", saveImage: "Bild speichern", description: "Beschreibung", tagsComma: "Tags, mit Komma getrennt",
-    takenAt: "Aufgenommen am", favorite: "Favorit", saveMetadata: "Metadaten speichern", delete: "Loeschen",
-    tutorialTitle: "Kurze Einfuehrung", tutorial1: "Ziehe Food-Fotos in den Upload-Bereich.",
-    tutorial2: "Pruefe EXIF-Datum, Kategorie und Tags in der Detailansicht.",
+    takenAt: "Aufgenommen am", favorite: "Favorit", saveMetadata: "Metadaten speichern", delete: "Löschen",
+    tutorialTitle: "Kurze Einführung", tutorial1: "Ziehe Food-Fotos in den Upload-Bereich.",
+    tutorial2: "Prüfe EXIF-Datum, Kategorie und Tags in der Detailansicht.",
     tutorial3: "Nutze Suche, Datumsfilter und Tags, um alte Gerichte schnell zu finden.",
-    tutorial4: "Exportiere ausgewaehlte Filterergebnisse als ZIP-Backup."
+    tutorial4: "Exportiere ausgewählte Filterergebnisse als ZIP-Backup."
   },
   en: {
     appName: "MealVault", tagline: "Food photos organized", gallery: "Gallery", upload: "Upload", stats: "Stats",
@@ -317,7 +317,7 @@ function exifDateToIso(value) {
 
 function suggestCategory(isoDate) {
   const hour = new Date(isoDate).getHours();
-  if (hour < 11) return "Fruehstueck";
+  if (hour < 11) return "Frühstück";
   if (hour < 15) return "Mittagessen";
   if (hour < 18) return "Snacks";
   return "Abendessen";
@@ -449,7 +449,7 @@ async function toggleSelectedFavorite() {
 
 async function deleteSelected() {
   const photo = getSelected();
-  if (!photo || !confirm("Dieses Foto wirklich loeschen?")) return;
+  if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
   render();
