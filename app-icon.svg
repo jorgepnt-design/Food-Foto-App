@@ -63,7 +63,7 @@ const state = {
   filtered: [],
   activeView: "gallery",
   quick: "all",
-  lang: localStorage.getItem("mealvault-lang") || "de",
+  lang: localStorage.getItem("foodporn-lang") || localStorage.getItem("mealvault-lang") || "de",
   selectedId: null,
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
@@ -74,12 +74,25 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
-  state.db = await openDb();
-  state.photos = await getAllPhotos();
-  setupCategorySelects();
-  bindEvents();
-  applyLanguage();
-  render();
+  try {
+    state.db = await openDb();
+    state.photos = await getAllPhotos();
+    setupCategorySelects();
+    bindEvents();
+    applyLanguage();
+    render();
+  } catch (error) {
+    showStartupError(error);
+  }
+}
+
+function showStartupError(error) {
+  const main = document.querySelector(".main");
+  if (!main) return;
+  const box = document.createElement("div");
+  box.className = "startup-error";
+  box.textContent = `App konnte nicht gestartet werden: ${error.message}`;
+  main.prepend(box);
 }
 
 function openDb() {
@@ -179,14 +192,14 @@ function bindEvents() {
   $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
   $("#language-toggle").addEventListener("click", () => {
     state.lang = state.lang === "de" ? "en" : "de";
-    localStorage.setItem("mealvault-lang", state.lang);
+    localStorage.setItem("foodporn-lang", state.lang);
     applyLanguage();
   });
-  $("#cloud-provider").value = localStorage.getItem("mealvault-cloud-provider") || "Google Cloud Storage";
-  $("#api-endpoint").value = localStorage.getItem("mealvault-api-endpoint") || "";
-  $("#cloud-provider").addEventListener("change", () => localStorage.setItem("mealvault-cloud-provider", $("#cloud-provider").value));
+  $("#cloud-provider").value = localStorage.getItem("foodporn-cloud-provider") || localStorage.getItem("mealvault-cloud-provider") || "Google Cloud Storage";
+  $("#api-endpoint").value = localStorage.getItem("foodporn-api-endpoint") || localStorage.getItem("mealvault-api-endpoint") || "";
+  $("#cloud-provider").addEventListener("change", () => localStorage.setItem("foodporn-cloud-provider", $("#cloud-provider").value));
   $("#api-endpoint").addEventListener("input", () => {
-    localStorage.setItem("mealvault-api-endpoint", $("#api-endpoint").value.trim());
+    localStorage.setItem("foodporn-api-endpoint", $("#api-endpoint").value.trim());
     updateCloudStatus();
   });
   $("#cloud-sync").addEventListener("click", syncFromCloud);
@@ -275,7 +288,7 @@ async function handleFiles(fileList) {
 }
 
 function getApiEndpoint() {
-  return ($("#api-endpoint").value || localStorage.getItem("mealvault-api-endpoint") || "").trim().replace(/\/$/, "");
+  return ($("#api-endpoint").value || localStorage.getItem("foodporn-api-endpoint") || localStorage.getItem("mealvault-api-endpoint") || "").trim().replace(/\/$/, "");
 }
 
 function updateCloudStatus() {

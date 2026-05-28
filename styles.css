@@ -209,6 +209,15 @@ textarea { resize: vertical; }
   border-radius: var(--radius);
   font-size: 0.84rem;
 }
+.startup-error {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #fff4f2;
+  border: 1px solid #ffd0c9;
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-weight: 600;
+}
 .settings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .bars { display: grid; gap: 10px; }
 .bar-row { display: grid; grid-template-columns: 130px 1fr 34px; gap: 10px; align-items: center; }
