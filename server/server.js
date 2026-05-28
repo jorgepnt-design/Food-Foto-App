@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import multer from "multer";
 import { Storage } from "@google-cloud/storage";
 import crypto from "node:crypto";
@@ -12,7 +11,10 @@ const upload = multer({
 
 const bucketName = process.env.GCS_BUCKET_NAME;
 const publicBaseUrl = process.env.GCS_PUBLIC_BASE_URL;
-const allowedOrigins = (process.env.CORS_ORIGIN || "*").split(",").map((origin) => origin.trim()).filter(Boolean);
+const allowedOrigins = (process.env.CORS_ORIGIN || "*")
+  .split(",")
+  .map(normalizeAllowedOrigin)
+  .filter(Boolean);
 
 if (!bucketName) {
   throw new Error("GCS_BUCKET_NAME is required");
@@ -22,7 +24,7 @@ const storage = new Storage(getStorageOptions());
 const bucket = storage.bucket(bucketName);
 
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
+  const origin = normalizeAllowedOrigin(req.headers.origin);
   const allowOrigin = !origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)
     ? (origin || "*")
     : allowedOrigins[0] || "*";
@@ -33,7 +35,6 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (req, res) => {
@@ -177,6 +178,15 @@ function getStorageOptions() {
     projectId: process.env.GCP_PROJECT_ID || credentials.project_id,
     credentials
   };
+}
+
+function normalizeAllowedOrigin(origin) {
+  if (!origin || origin === "*") return origin || "";
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return String(origin).replace(/\/$/, "");
+  }
 }
 
 function parseMetadata(value) {

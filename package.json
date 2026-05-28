@@ -1,8 +1,18 @@
-GCS_BUCKET_NAME=dein-food-foto-bucket
-GCP_PROJECT_ID=dein-google-cloud-projekt
-GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
-CORS_ORIGIN=https://jorgepnt-design.github.io,https://deine-vercel-app.vercel.app
-MAX_UPLOAD_MB=25
-
-# Optional, nur wenn dein Bucket öffentlich oder hinter Cloud CDN liegt:
-# GCS_PUBLIC_BASE_URL=https://storage.googleapis.com/dein-food-foto-bucket
+{
+  "name": "food-foto-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "server:start": "npm --prefix server start"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
+    "express": "^4.19.2",
+    "multer": "^2.1.1"
+  }
+}
