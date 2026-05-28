@@ -30,7 +30,29 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, storage: "google-cloud-storage", bucket: bucketName });
+  res.json({
+    ok: true,
+    storage: "google-cloud-storage",
+    bucket: bucketName,
+    projectId: process.env.GCP_PROJECT_ID || null,
+    hasCredentials: Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)
+  });
+});
+
+app.get("/api/debug/storage", async (req, res, next) => {
+  try {
+    const [exists] = await bucket.exists();
+    const [files] = exists ? await bucket.getFiles({ prefix: "food-photos/", maxResults: 5 }) : [[]];
+    res.json({
+      ok: true,
+      bucket: bucketName,
+      exists,
+      sampleCount: files.length,
+      sampleObjects: files.map((file) => file.name)
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/photos/upload", upload.single("image"), async (req, res, next) => {
@@ -64,6 +86,30 @@ app.post("/api/photos/upload", upload.single("image"), async (req, res, next) =>
   }
 });
 
+app.get("/api/photos", async (req, res, next) => {
+  try {
+    const [files] = await bucket.getFiles({ prefix: "food-photos/" });
+    const photos = await Promise.all(files.map(async (file) => {
+      const [metadata] = await file.getMetadata();
+      const custom = metadata.metadata || {};
+      return {
+        ...custom,
+        id: custom.id || file.name,
+        name: custom.name || file.name.split("/").pop(),
+        type: metadata.contentType || custom.type || "image/jpeg",
+        createdAt: custom.createdAt || metadata.timeCreated,
+        updatedAt: custom.editedAt || metadata.updated,
+        takenAt: custom.takenAt || metadata.timeCreated,
+        cloudObject: file.name,
+        cloudUrl: await getReadableUrl(file, file.name)
+      };
+    }));
+    res.json({ photos });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/photos/signed-url", async (req, res, next) => {
   try {
     const objectName = String(req.query.objectName || "");
@@ -81,7 +127,13 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
 
 app.use((error, req, res, next) => {
   console.error(error);
-  res.status(500).json({ error: "server_error", message: error.message });
+  const status = error.code === 403 ? 403 : error.code === 404 ? 404 : 500;
+  res.status(status).json({
+    error: "server_error",
+    message: error.message,
+    code: error.code || null,
+    bucket: bucketName
+  });
 });
 
 const port = process.env.PORT || 10000;

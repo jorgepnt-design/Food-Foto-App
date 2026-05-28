@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#2f6f63" />
   <meta name="apple-mobile-web-app-title" content="Foodporn" />
   <title>Foodporn - Food Foto Organizer</title>
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260528-8" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260528-8" />
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260528-8" />
-  <link rel="manifest" href="site.webmanifest?v=foodporn-20260528-8" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260528-8" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260528-9" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260528-9" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260528-9" />
+  <link rel="manifest" href="site.webmanifest?v=foodporn-20260528-9" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260528-9" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -89,7 +89,7 @@
           <div class="drop-content">
             <div class="drop-icon">⇧</div>
             <h3 data-i18n="dropTitle">Bilder hier ablegen</h3>
-            <button id="choose-files" class="file-picker-button" type="button" data-i18n="choosePhotos">Bilder auswählen</button>
+            <label id="choose-files" class="file-picker-button" for="file-input" data-i18n="choosePhotos">Bilder auswählen</label>
             <input id="file-input" class="file-input" type="file" accept="image/*,.heic,.heif" multiple />
             <p data-i18n="dropText">Oder anklicken und mehrere Food-Fotos auswählen. EXIF-Daten werden automatisch gelesen.</p>
           </div>
@@ -197,7 +197,7 @@
     </article>
   </template>
 
-  <script src="app.js?v=foodporn-20260528-8" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260528-9" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     window.addEventListener("error", function (event) {
       var main = document.querySelector(".main");
