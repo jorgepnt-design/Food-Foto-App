@@ -208,7 +208,10 @@ textarea { resize: vertical; }
   background: var(--surface-soft);
   border-radius: var(--radius);
   font-size: 0.84rem;
+  word-break: break-word;
 }
+.cloud-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.cloud-actions button { flex: 1 1 160px; }
 .startup-error {
   margin-bottom: 16px;
   padding: 12px 14px;

@@ -18,7 +18,7 @@ const translations = {
     authText: "Diese Version läuft lokal ohne Server. OAuth/Auth0 kann im Backend ergänzt werden.",
     demoUser: "Demo-Nutzer", cloudTitle: "Cloud-Speicher",
     cloudText: "Google Cloud Storage kann über ein Render-Backend angebunden werden.",
-    cloudSync: "Cloud synchronisieren",
+    cloudSync: "Cloud synchronisieren", cloudTest: "Cloud testen",
     storageProvider: "Provider", apiEndpoint: "API-Endpunkt", backupTitle: "Backups",
     backupText: "Exportiere regelmäßig ZIP-Dateien als lokale Sicherung.", exportMetadata: "Metadaten exportieren",
     details: "Details", saveImage: "Bild speichern", resetEdit: "Reset", brightness: "Helligkeit", contrast: "Kontrast",
@@ -44,7 +44,7 @@ const translations = {
     authText: "This version runs locally without a server. OAuth/Auth0 can be added in the backend.",
     demoUser: "Demo user", cloudTitle: "Cloud storage",
     cloudText: "Google Cloud Storage can be connected through a Render backend.",
-    cloudSync: "Sync cloud",
+    cloudSync: "Sync cloud", cloudTest: "Test cloud",
     storageProvider: "Provider", apiEndpoint: "API endpoint", backupTitle: "Backups",
     backupText: "Export ZIP files regularly as local backups.", exportMetadata: "Export metadata",
     details: "Details", saveImage: "Save image", resetEdit: "Reset", brightness: "Brightness", contrast: "Contrast",
@@ -202,6 +202,7 @@ function bindEvents() {
     localStorage.setItem("foodporn-api-endpoint", $("#api-endpoint").value.trim());
     updateCloudStatus();
   });
+  $("#cloud-test").addEventListener("click", testCloudConnection);
   $("#cloud-sync").addEventListener("click", syncFromCloud);
   updateCloudStatus();
 }
@@ -299,6 +300,30 @@ function updateCloudStatus() {
     : "Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.";
 }
 
+async function testCloudConnection() {
+  const endpoint = getApiEndpoint();
+  const status = $("#cloud-status");
+  if (!endpoint) {
+    status.textContent = "Bitte zuerst den Render-API-Endpunkt eintragen.";
+    return;
+  }
+  try {
+    status.textContent = "Teste Render-API...";
+    const health = await fetchJson(`${endpoint}/health`);
+    status.textContent = `Render erreichbar. Bucket: ${health.bucket || "unbekannt"}. Prüfe Bilder...`;
+    const list = await fetchJson(`${endpoint}/api/photos`);
+    status.textContent = `Cloud erreichbar. Gefundene Bilder: ${(list.photos || []).length}. Bucket: ${health.bucket || "unbekannt"}.`;
+  } catch (error) {
+    status.textContent = `Cloud-Test fehlgeschlagen: ${error.message}`;
+  }
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
+}
+
 async function uploadPhotoToCloud(file, photo) {
   const endpoint = getApiEndpoint();
   if (!endpoint) return null;
@@ -330,12 +355,13 @@ async function syncFromCloud() {
   }
   const status = $("#cloud-status");
   status.textContent = "Cloud wird synchronisiert...";
-  const response = await fetch(`${endpoint}/api/photos`);
-  if (!response.ok) {
-    status.textContent = `Cloud-Synchronisierung fehlgeschlagen: ${response.status}`;
+  let cloudPhotos;
+  try {
+    cloudPhotos = await fetchJson(`${endpoint}/api/photos`);
+  } catch (error) {
+    status.textContent = `Cloud-Synchronisierung fehlgeschlagen: ${error.message}`;
     return;
   }
-  const cloudPhotos = await response.json();
   let imported = 0;
   for (const cloudPhoto of cloudPhotos.photos || []) {
     const existing = state.photos.find((photo) => photo.cloudObject === cloudPhoto.cloudObject || photo.id === cloudPhoto.id);
