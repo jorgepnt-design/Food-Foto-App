@@ -29,6 +29,15 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "1mb" }));
 
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    app: "Foodporn API",
+    routes: ["/health", "/api/photos", "/api/photos/upload", "/api/debug/storage"],
+    bucket: bucketName
+  });
+});
+
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -123,6 +132,15 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: "not_found",
+    path: req.path,
+    app: "Foodporn API",
+    availableRoutes: ["/", "/health", "/api/photos", "/api/photos/upload", "/api/debug/storage"]
+  });
 });
 
 app.use((error, req, res, next) => {
