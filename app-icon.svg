@@ -1,5 +1,6 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
+const DEFAULT_API_ENDPOINT = "https://food-foto-app-api.onrender.com";
 const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
 
 const translations = {
@@ -63,13 +64,29 @@ const state = {
   filtered: [],
   activeView: "gallery",
   quick: "all",
-  lang: localStorage.getItem("foodporn-lang") || localStorage.getItem("mealvault-lang") || "de",
+  lang: safeGet("foodporn-lang") || safeGet("mealvault-lang") || "de",
   selectedId: null,
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+function safeGet(key) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; max-age=31536000; path=/; SameSite=Lax`;
+  }
+}
 
 document.addEventListener("DOMContentLoaded", init);
 
@@ -82,6 +99,7 @@ async function init() {
     await migrateLegacyPhotos();
     state.photos = await getAllPhotos();
     render();
+    autoSyncFromCloud();
   } catch (error) {
     showStartupError(error);
     state.photos = [];
@@ -243,14 +261,20 @@ function bindEvents() {
   $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
   $("#language-toggle").addEventListener("click", () => {
     state.lang = state.lang === "de" ? "en" : "de";
-    localStorage.setItem("foodporn-lang", state.lang);
+    safeSet("foodporn-lang", state.lang);
     applyLanguage();
   });
-  $("#cloud-provider").value = localStorage.getItem("foodporn-cloud-provider") || localStorage.getItem("mealvault-cloud-provider") || "Google Cloud Storage";
-  $("#api-endpoint").value = localStorage.getItem("foodporn-api-endpoint") || localStorage.getItem("mealvault-api-endpoint") || "";
-  $("#cloud-provider").addEventListener("change", () => localStorage.setItem("foodporn-cloud-provider", $("#cloud-provider").value));
+  $("#cloud-provider").value = safeGet("foodporn-cloud-provider") || safeGet("mealvault-cloud-provider") || "Google Cloud Storage";
+  $("#api-endpoint").value = getApiEndpoint();
+  persistApiEndpoint($("#api-endpoint").value);
+  $("#cloud-provider").addEventListener("change", () => safeSet("foodporn-cloud-provider", $("#cloud-provider").value));
   $("#api-endpoint").addEventListener("input", () => {
-    localStorage.setItem("foodporn-api-endpoint", $("#api-endpoint").value.trim());
+    persistApiEndpoint($("#api-endpoint").value);
+    updateCloudStatus();
+  });
+  $("#api-endpoint").addEventListener("blur", () => {
+    $("#api-endpoint").value = getApiEndpoint();
+    persistApiEndpoint($("#api-endpoint").value);
     updateCloudStatus();
   });
   $("#cloud-test").addEventListener("click", testCloudConnection);
@@ -340,7 +364,14 @@ async function handleFiles(fileList) {
 }
 
 function getApiEndpoint() {
-  return ($("#api-endpoint").value || localStorage.getItem("foodporn-api-endpoint") || localStorage.getItem("mealvault-api-endpoint") || "").trim().replace(/\/$/, "");
+  return ($("#api-endpoint").value || safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint") || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+}
+
+function persistApiEndpoint(value) {
+  const endpoint = (value || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+  safeSet("foodporn-api-endpoint", endpoint);
+  safeSet("mealvault-api-endpoint", endpoint);
+  return endpoint;
 }
 
 function updateCloudStatus() {
@@ -366,6 +397,16 @@ async function testCloudConnection() {
     status.textContent = `Cloud erreichbar. Gefundene Bilder: ${(list.photos || []).length}. Bucket: ${health.bucket || "unbekannt"}.`;
   } catch (error) {
     status.textContent = `Cloud-Test fehlgeschlagen: ${error.message}`;
+  }
+}
+
+async function autoSyncFromCloud() {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return;
+  try {
+    await syncFromCloud({ silent: true });
+  } catch {
+    updateCloudStatus();
   }
 }
 
@@ -398,19 +439,19 @@ async function uploadEditedImageToCloud(blob, photo) {
   return response.json();
 }
 
-async function syncFromCloud() {
+async function syncFromCloud(options = {}) {
   const endpoint = getApiEndpoint();
   if (!endpoint) {
-    alert("Bitte zuerst den Render-API-Endpunkt eintragen.");
+    if (!options.silent) alert("Bitte zuerst den Render-API-Endpunkt eintragen.");
     return;
   }
   const status = $("#cloud-status");
-  status.textContent = "Cloud wird synchronisiert...";
+  if (status) status.textContent = "Cloud wird synchronisiert...";
   let cloudPhotos;
   try {
     cloudPhotos = await fetchJson(`${endpoint}/api/photos`);
   } catch (error) {
-    status.textContent = `Cloud-Synchronisierung fehlgeschlagen: ${error.message}`;
+    if (status) status.textContent = `Cloud-Synchronisierung fehlgeschlagen: ${error.message}`;
     return;
   }
   let imported = 0;
@@ -444,8 +485,8 @@ async function syncFromCloud() {
   }
   state.photos = await getAllPhotos();
   render();
-  switchView("gallery");
-  status.textContent = `Cloud synchronisiert. ${imported} neue Bilder importiert.`;
+  if (!options.silent) switchView("gallery");
+  if (status) status.textContent = `Cloud synchronisiert. ${imported} neue Bilder importiert. Insgesamt: ${state.photos.length}.`;
 }
 
 function parseTags(value) {
