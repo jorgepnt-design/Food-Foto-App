@@ -741,6 +741,8 @@ function renderGallery() {
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
     node.querySelector(".photo-open").addEventListener("click", () => openLightbox(photo.id));
+    node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
+    node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
       await savePhoto(photo);
