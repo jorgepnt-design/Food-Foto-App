@@ -772,6 +772,8 @@ function getDisplayImageUrl(photo) {
   const url = photo.dataUrl || photo.cloudUrl || "";
   if (!url) return "";
   if (url.startsWith("data:")) return url;
+  // Signierte GCS/S3-URLs dürfen keine extra Parameter bekommen (Signatur wird sonst ungültig)
+  if (url.includes("X-Goog-") || url.includes("X-Amz-")) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
 }
