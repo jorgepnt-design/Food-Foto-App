@@ -397,7 +397,15 @@ async function syncFromCloud(options = {}) {
     return;
   }
 
-  // Schritt 3: Mergen
+  // Schritt 3: In Cloud gelöschte Fotos lokal entfernen
+  const cloudObjects = new Set((cloudPhotos.photos || []).map((p) => p.cloudObject).filter(Boolean));
+  const toDelete = state.photos.filter((p) => p.cloudObject && !cloudObjects.has(p.cloudObject));
+  for (const p of toDelete) {
+    await removePhoto(p.id);
+    state.photos = state.photos.filter((x) => x.id !== p.id);
+  }
+
+  // Schritt 4: Neue und aktualisierte Fotos mergen
   let imported = 0;
   for (const cloudPhoto of cloudPhotos.photos || []) {
     const existing = state.photos.find((p) => p.cloudObject === cloudPhoto.cloudObject || p.id === cloudPhoto.id);
