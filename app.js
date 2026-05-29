@@ -259,6 +259,11 @@ function bindEvents() {
   });
   $("#cloud-test").addEventListener("click", testCloudConnection);
   $("#cloud-sync").addEventListener("click", () => syncFromCloud());
+  $("#sync-button").addEventListener("click", () => syncFromCloud());
+  $("#refresh-button").addEventListener("click", async () => {
+    state.photos = await getAllPhotos();
+    render();
+  });
   updateCloudStatus();
 }
 
@@ -722,10 +727,18 @@ function renderGallery() {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
     node.querySelector("img").src = getDisplayImageUrl(photo);
     node.querySelector("img").alt = photo.description || photo.name;
-    node.querySelector("h3").textContent = photo.category;
+    node.querySelector("h3").textContent = photo.title || photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
     node.querySelector(".photo-open").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
+    node.querySelector(".card-delete").addEventListener("click", async () => {
+      if (!confirm("Dieses Foto wirklich löschen?")) return;
+      await removePhoto(photo.id);
+      state.photos = state.photos.filter((item) => item.id !== photo.id);
+      render();
+    });
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
       await savePhoto(photo);
@@ -760,6 +773,7 @@ function openDetail(id) {
   if (!photo) return;
   state.selectedId = id;
   resetEditState();
+  $("#detail-title").value = photo.title || "";
   $("#detail-description").value = photo.description || "";
   $("#detail-category").value = photo.category;
   $("#detail-tags").value = (photo.tags || []).join(", ");
@@ -787,6 +801,7 @@ async function saveDetails(event) {
   event.preventDefault();
   const photo = getSelected();
   if (!photo) return;
+  photo.title = $("#detail-title").value.trim();
   photo.description = $("#detail-description").value.trim();
   photo.category = $("#detail-category").value;
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
@@ -1081,3 +1096,49 @@ function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replac
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
 }
+
+// ─── Lightbox ────────────────────────────────────────────────────
+
+function openLightbox(id) {
+  const idx = state.filtered.findIndex((p) => p.id === id);
+  if (idx < 0) return;
+  state.lightboxIndex = idx;
+  showLightboxPhoto();
+  $("#lightbox").classList.remove("hidden");
+}
+
+function showLightboxPhoto() {
+  const photo = state.filtered[state.lightboxIndex];
+  if (!photo) return;
+  const img = $("#lightbox-img");
+  img.src = getDisplayImageUrl(photo);
+  img.alt = photo.title || photo.description || photo.name;
+  $("#lightbox-caption").textContent = [photo.title || photo.category, formatDate(photo.takenAt)].filter(Boolean).join(" · ");
+}
+
+function closeLightbox() {
+  $("#lightbox").classList.add("hidden");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("#lightbox-close").addEventListener("click", closeLightbox);
+  $("#lightbox-prev").addEventListener("click", () => {
+    state.lightboxIndex = (state.lightboxIndex - 1 + state.filtered.length) % state.filtered.length;
+    showLightboxPhoto();
+  });
+  $("#lightbox-next").addEventListener("click", () => {
+    state.lightboxIndex = (state.lightboxIndex + 1) % state.filtered.length;
+    showLightboxPhoto();
+  });
+  $("#lightbox-detail").addEventListener("click", () => {
+    const photo = state.filtered[state.lightboxIndex];
+    if (photo) { closeLightbox(); openDetail(photo.id); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("#lightbox").classList.contains("hidden")) return;
+    if (e.key === "ArrowLeft") $("#lightbox-prev").click();
+    if (e.key === "ArrowRight") $("#lightbox-next").click();
+    if (e.key === "Escape") closeLightbox();
+  });
+});
+

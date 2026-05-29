@@ -143,7 +143,7 @@
             <h3 data-i18n="cloudTitle">Cloud-Speicher</h3>
             <p data-i18n="cloudText">Google Cloud Storage kann über ein Render-Backend angebunden werden.</p>
             <label><span data-i18n="storageProvider">Provider</span><select id="cloud-provider"><option>Google Cloud Storage</option><option>Render Disk</option><option>AWS S3</option><option>Firebase Storage</option></select></label>
-            <label><span data-i18n="apiEndpoint">API-Endpunkt</span><input id="api-endpoint" type="url" value="https://food-foto-app-api.onrender.com" placeholder="https://food-foto-app-api.onrender.com" /></label>
+            <label><span data-i18n="apiEndpoint">API-Endpunkt</span><input id="api-endpoint" type="url" placeholder="https://food-foto-app.onrender.com" /></label>
             <div class="cloud-actions">
               <button id="cloud-test" class="secondary-button" data-i18n="cloudTest">Cloud testen</button>
               <button id="cloud-sync" class="primary-button" data-i18n="cloudSync">Cloud synchronisieren</button>
@@ -236,7 +236,7 @@
     <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260529-4" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260530-1" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
@@ -251,20 +251,6 @@
       box.className = "startup-error";
       box.textContent = "App-Fehler: " + (event.message || "JavaScript konnte nicht geladen werden");
       main.insertBefore(box, main.firstChild);
-    });
-
-    document.addEventListener("click", function (event) {
-      var nav = event.target.closest && event.target.closest("[data-view]");
-      if (!nav) return;
-      document.querySelectorAll(".nav-tab").forEach(function (button) {
-        button.classList.toggle("active", button === nav);
-      });
-      document.querySelectorAll(".view").forEach(function (section) {
-        section.classList.toggle("active", section.id === nav.getAttribute("data-view") + "-view");
-      });
-      var title = document.getElementById("view-title");
-      var label = nav.querySelector("[data-i18n]");
-      if (title && label) title.textContent = label.textContent === "Galerie" ? "Essensbilder" : label.textContent;
     });
   </script>
 </body>
