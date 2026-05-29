@@ -414,8 +414,20 @@ async function syncFromCloud(options = {}) {
     setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
     return;
   }
+  // User-Edits laden (Gerichtsnamen, Beschreibungen etc.)
+  let userEdits = {};
+  try {
+    const editsRes = await fetchWithTimeout(`${endpoint}/api/user-edits`, { cache: "no-store" }, 10000);
+    userEdits = await editsRes.json();
+  } catch (e) {
+    console.warn("[user-edits]", e.message);
+  }
+
   let imported = 0;
   for (const cp of cloudPhotos.photos || []) {
+    // User-Edits mit Cloud-Metadaten mergen
+    const edits = userEdits[cp.id] || {};
+    Object.assign(cp, edits);
     const existing = state.photos.find((p) => p.cloudObject === cp.cloudObject || p.id === cp.id);
     const merged = {
       id: cp.id || crypto.randomUUID(),
@@ -831,13 +843,13 @@ async function saveDetails(event) {
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
   photo.takenAt = new Date($("#detail-date").value).toISOString();
   await savePhoto(photo);
-  // Metadaten auch in Cloud aktualisieren
-  if (photo.cloudObject && getApiEndpoint()) {
+  // Metadaten in Cloud speichern via user-edits
+  if (photo.id && getApiEndpoint()) {
     try {
-      await fetchWithTimeout(`${getApiEndpoint()}/api/photos/${encodeURIComponent(photo.cloudObject)}/metadata`, {
-        method: "POST",
+      await fetchWithTimeout(`${getApiEndpoint()}/api/user-edits`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(withoutDataUrl(photo))
+        body: JSON.stringify({ id: photo.id, edits: withoutDataUrl(photo) })
       }, 15000);
     } catch (e) {
       console.warn("[Metadaten-Sync]", e.message);
