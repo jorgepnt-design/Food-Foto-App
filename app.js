@@ -435,6 +435,7 @@ async function syncFromCloud(options = {}) {
       camera: cloudPhoto.camera || "Unbekannt",
       category: cloudPhoto.category || "Sonstiges",
       tags: Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags),
+      title: cloudPhoto.title || "",
       description: cloudPhoto.description || "",
       favorite: cloudPhoto.favorite === true || cloudPhoto.favorite === "true",
       createdAt: cloudPhoto.createdAt || new Date().toISOString(),
@@ -857,7 +858,17 @@ async function saveDetails(event) {
   photo.category = $("#detail-category").value;
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
   photo.takenAt = new Date($("#detail-date").value).toISOString();
+  photo.editedAt = new Date().toISOString();
   await savePhoto(photo);
+  if (photo.cloudObject) {
+    try {
+      await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ objectName: photo.cloudObject, metadata: withoutDataUrl(photo) })
+      }, 30000);
+    } catch (e) { console.warn("[Meta-Update]", e); }
+  }
   state.photos = await getAllPhotos();
   render();
   closeDetail();

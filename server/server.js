@@ -26,7 +26,7 @@ app.use((req, res, next) => {
     : allowedOrigins[0] || "*";
   res.setHeader("Access-Control-Allow-Origin", allowOrigin);
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
@@ -137,6 +137,19 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
       expires: Date.now() + 1000 * 60 * 60
     });
     res.json({ url });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/photos/metadata", async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
+  try {
+    const { objectName, metadata } = req.body;
+    if (!objectName) return res.status(400).json({ error: "objectName is required" });
+    const file = bucket.file(objectName);
+    await file.setMetadata({ metadata: flattenMetadata(metadata || {}) });
+    res.json({ ok: true, objectName });
   } catch (error) {
     next(error);
   }
