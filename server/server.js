@@ -58,16 +58,8 @@ app.get("/api/debug/storage", async (req, res, next) => {
   try {
     const [exists] = await bucket.exists();
     const [files] = exists ? await bucket.getFiles({ prefix: "food-photos/", maxResults: 5 }) : [[]];
-    res.json({
-      ok: true,
-      bucket: bucketName,
-      exists,
-      sampleCount: files.length,
-      sampleObjects: files.map((file) => file.name)
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ ok: true, bucket: bucketName, exists, sampleCount: files.length, sampleObjects: files.map((f) => f.name) });
+  } catch (error) { next(error); }
 });
 
 app.post("/api/photos/upload", upload.single("image"), async (req, res, next) => {
@@ -84,62 +76,61 @@ app.post("/api/photos/upload", upload.single("image"), async (req, res, next) =>
       resumable: false,
       contentType: req.file.mimetype,
       metadata: {
-        cacheControl: "private, max-age=3600",
+        cacheControl: "public, max-age=31536000",
         metadata: flattenMetadata(metadata)
       }
     });
 
     const url = await getReadableUrl(file, objectName);
-    res.status(201).json({
-      bucket: bucketName,
-      objectName,
-      url,
-      size: req.file.size,
-      contentType: req.file.mimetype
-    });
-  } catch (error) {
-    next(error);
-  }
+
+    // User-Edits auch speichern damit Metadaten persistent sind
+    if (metadata.id) {
+      const all = await readUserEdits();
+      all[metadata.id] = { ...all[metadata.id], ...metadata, cloudObject: objectName, cloudUrl: url, updatedAt: new Date().toISOString() };
+      await writeUserEdits(all).catch(() => {});
+    }
+
+    res.status(201).json({ bucket: bucketName, objectName, url, size: req.file.size, contentType: req.file.mimetype });
+  } catch (error) { next(error); }
 });
 
 app.get("/api/photos", async (req, res, next) => {
   if (!bucket) return res.json({ photos: [] });
   try {
     const [files] = await bucket.getFiles({ prefix: "food-photos/" });
+    const userEdits = await readUserEdits();
+
     const photos = await Promise.all(files.map(async (file) => {
       const [metadata] = await file.getMetadata();
       const custom = metadata.metadata || {};
+      const id = custom.id || file.name;
+      const edits = userEdits[id] || {};
+      const cloudUrl = await getReadableUrl(file, file.name);
       return {
         ...custom,
-        id: custom.id || file.name,
+        ...edits,           // User-Edits überschreiben GCS-Metadaten (title, description etc.)
+        id,
         name: custom.name || file.name.split("/").pop(),
         type: metadata.contentType || custom.type || "image/jpeg",
         createdAt: custom.createdAt || metadata.timeCreated,
-        updatedAt: custom.editedAt || metadata.updated,
+        updatedAt: edits.updatedAt || custom.editedAt || metadata.updated,
         takenAt: custom.takenAt || metadata.timeCreated,
         cloudObject: file.name,
-        cloudUrl: await getReadableUrl(file, file.name)
+        cloudUrl
       };
     }));
     res.json({ photos });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
 app.get("/api/photos/signed-url", async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS not configured" });
   try {
     const objectName = String(req.query.objectName || "");
     if (!objectName) return res.status(400).json({ error: "objectName is required" });
-    const [url] = await bucket.file(objectName).getSignedUrl({
-      version: "v4",
-      action: "read",
-      expires: Date.now() + 1000 * 60 * 60
-    });
+    const [url] = await bucket.file(objectName).getSignedUrl({ version: "v4", action: "read", expires: Date.now() + 1000 * 60 * 60 });
     res.json({ url });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
 const USER_EDITS_FILE = "user-edits.json";
@@ -166,9 +157,7 @@ async function writeUserEdits(edits) {
 
 app.get("/api/user-edits", async (req, res, next) => {
   if (!bucket) return res.json({});
-  try {
-    res.json(await readUserEdits());
-  } catch (error) { next(error); }
+  try { res.json(await readUserEdits()); } catch (error) { next(error); }
 });
 
 app.put("/api/user-edits", async (req, res, next) => {
@@ -188,68 +177,40 @@ app.delete("/api/photos", async (req, res, next) => {
   try {
     const objectName = String(req.query.objectName || "");
     if (!objectName) return res.status(400).json({ error: "objectName query param is required" });
-    console.log("[DELETE]", objectName);
     await bucket.file(objectName).delete({ ignoreNotFound: true });
     res.json({ ok: true, deleted: objectName });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
 app.use((req, res) => {
-  res.status(404).json({
-    error: "not_found",
-    path: req.path,
-    app: "Foodporn API",
-    availableRoutes: ["/", "/health", "/api/photos", "/api/photos/upload", "/api/debug/storage"]
-  });
+  res.status(404).json({ error: "not_found", path: req.path, app: "Foodporn API" });
 });
 
 app.use((error, req, res, next) => {
   console.error(error);
   const status = error.code === 403 ? 403 : error.code === 404 ? 404 : 500;
-  res.status(status).json({
-    error: "server_error",
-    message: error.message,
-    code: error.code || null,
-    bucket: bucketName
-  });
+  res.status(status).json({ error: "server_error", message: error.message, code: error.code || null });
 });
 
 const port = process.env.PORT || 10000;
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Food Foto API listening on ${port}`);
-});
+app.listen(port, "0.0.0.0", () => { console.log(`Food Foto API listening on ${port}`); });
 
 function getStorageOptions() {
   const rawCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
   if (!rawCredentials) return {};
-  const json = rawCredentials.trim().startsWith("{")
-    ? rawCredentials
-    : Buffer.from(rawCredentials, "base64").toString("utf8");
+  const json = rawCredentials.trim().startsWith("{") ? rawCredentials : Buffer.from(rawCredentials, "base64").toString("utf8");
   const credentials = JSON.parse(json);
-  return {
-    projectId: process.env.GCP_PROJECT_ID || credentials.project_id,
-    credentials
-  };
+  return { projectId: process.env.GCP_PROJECT_ID || credentials.project_id, credentials };
 }
 
 function normalizeAllowedOrigin(origin) {
   if (!origin || origin === "*") return origin || "";
-  try {
-    return new URL(origin).origin;
-  } catch {
-    return String(origin).replace(/\/$/, "");
-  }
+  try { return new URL(origin).origin; } catch { return String(origin).replace(/\/$/, ""); }
 }
 
 function parseMetadata(value) {
   if (!value) return {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(value); } catch { return {}; }
 }
 
 function flattenMetadata(metadata) {
@@ -269,10 +230,6 @@ function buildObjectName(originalName) {
 
 async function getReadableUrl(file, objectName) {
   if (publicBaseUrl) return `${publicBaseUrl.replace(/\/$/, "")}/${objectName}`;
-  const [url] = await file.getSignedUrl({
-    version: "v4",
-    action: "read",
-    expires: Date.now() + 1000 * 60 * 60 * 24 * 7
-  });
+  const [url] = await file.getSignedUrl({ version: "v4", action: "read", expires: Date.now() + 1000 * 60 * 60 * 24 * 7 });
   return url;
 }
