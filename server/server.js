@@ -26,7 +26,7 @@ app.use((req, res, next) => {
     : allowedOrigins[0] || "*";
   res.setHeader("Access-Control-Allow-Origin", allowOrigin);
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
@@ -142,17 +142,45 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
   }
 });
 
-app.patch("/api/photos/metadata", async (req, res, next) => {
+const USER_EDITS_FILE = "user-edits.json";
+
+async function readUserEdits() {
+  if (!bucket) return {};
+  try {
+    const file = bucket.file(USER_EDITS_FILE);
+    const [exists] = await file.exists();
+    if (!exists) return {};
+    const [contents] = await file.download();
+    return JSON.parse(contents.toString("utf8"));
+  } catch { return {}; }
+}
+
+async function writeUserEdits(edits) {
+  const file = bucket.file(USER_EDITS_FILE);
+  await file.save(JSON.stringify(edits, null, 2), {
+    resumable: false,
+    contentType: "application/json",
+    metadata: { cacheControl: "no-store" }
+  });
+}
+
+app.get("/api/user-edits", async (req, res, next) => {
+  if (!bucket) return res.json({});
+  try {
+    res.json(await readUserEdits());
+  } catch (error) { next(error); }
+});
+
+app.put("/api/user-edits", async (req, res, next) => {
   if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
   try {
-    const { objectName, metadata } = req.body;
-    if (!objectName) return res.status(400).json({ error: "objectName is required" });
-    const file = bucket.file(objectName);
-    await file.setMetadata({ metadata: flattenMetadata(metadata || {}) });
-    res.json({ ok: true, objectName });
-  } catch (error) {
-    next(error);
-  }
+    const { id, edits } = req.body;
+    if (!id) return res.status(400).json({ error: "id is required" });
+    const all = await readUserEdits();
+    all[id] = { ...(all[id] || {}), ...edits, updatedAt: new Date().toISOString() };
+    await writeUserEdits(all);
+    res.json({ ok: true, id });
+  } catch (error) { next(error); }
 });
 
 app.delete("/api/photos", async (req, res, next) => {

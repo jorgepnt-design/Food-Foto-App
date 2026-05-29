@@ -416,12 +416,16 @@ async function syncFromCloud(options = {}) {
   setCloudStatus("☁ Metadaten aktualisieren...", "#e67e22");
   await flushPendingMetadata();
 
-  // Schritt 3: Fotos laden (jetzt mit aktuellen Metadaten)
+  // Schritt 3: Fotos und User-Edits laden
   setCloudStatus("☁ Lade Fotos aus der Cloud...", "#e67e22");
-  let cloudPhotos;
+  let cloudPhotos, userEdits = {};
   try {
-    const res = await fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" }, 30000);
-    cloudPhotos = await res.json();
+    const [photosRes, editsRes] = await Promise.all([
+      fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" }, 30000),
+      fetchWithTimeout(`${endpoint}/api/user-edits`, { cache: "no-store" }, 15000).catch(() => null)
+    ]);
+    cloudPhotos = await photosRes.json();
+    if (editsRes) userEdits = await editsRes.json();
   } catch (error) {
     setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
     return;
@@ -439,23 +443,25 @@ async function syncFromCloud(options = {}) {
   let imported = 0;
   for (const cloudPhoto of cloudPhotos.photos || []) {
     const existing = state.photos.find((p) => p.cloudObject === cloudPhoto.cloudObject || p.id === cloudPhoto.id);
+    const photoId = cloudPhoto.id || crypto.randomUUID();
+    const ue = userEdits[photoId] || {};
     const merged = {
-      id: cloudPhoto.id || crypto.randomUUID(),
+      id: photoId,
       name: cloudPhoto.name || getCloudObjectFileName(cloudPhoto.cloudObject) || "cloud-photo.jpg",
       type: cloudPhoto.type || "image/jpeg",
       dataUrl: cloudPhoto.cloudUrl,
       takenAt: cloudPhoto.takenAt || cloudPhoto.createdAt || new Date().toISOString(),
       camera: cloudPhoto.camera || "Unbekannt",
-      category: cloudPhoto.category || "Sonstiges",
-      tags: Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags),
-      title: cloudPhoto.title || "",
-      description: cloudPhoto.description || "",
-      favorite: cloudPhoto.favorite === true || cloudPhoto.favorite === "true",
+      category: ue.category || cloudPhoto.category || "Sonstiges",
+      tags: ue.tags ? (Array.isArray(ue.tags) ? ue.tags : parseTags(ue.tags)) : (Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags)),
+      title: ue.title !== undefined ? ue.title : (cloudPhoto.title || ""),
+      description: ue.description !== undefined ? ue.description : (cloudPhoto.description || ""),
+      favorite: ue.favorite !== undefined ? (ue.favorite === true || ue.favorite === "true") : (cloudPhoto.favorite === true || cloudPhoto.favorite === "true"),
       createdAt: cloudPhoto.createdAt || new Date().toISOString(),
       storage: "gcs",
       cloudObject: cloudPhoto.cloudObject,
       cloudUrl: cloudPhoto.cloudUrl,
-      editedAt: cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
+      editedAt: ue.editedAt || cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
     };
     if (existing) {
       const localNewer = existing.editedAt && merged.editedAt && new Date(existing.editedAt) > new Date(merged.editedAt);
@@ -1121,11 +1127,12 @@ function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replac
 // ─── Cloud Metadata Push ──────────────────────────────────────
 
 async function pushMetadataToCloud(photo) {
+  const edits = { title: photo.title || "", description: photo.description || "", category: photo.category, tags: photo.tags, favorite: photo.favorite, editedAt: photo.editedAt };
   try {
-    await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
-      method: "PATCH",
+    await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/user-edits`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ objectName: photo.cloudObject, metadata: withoutDataUrl(photo) })
+      body: JSON.stringify({ id: photo.id, edits })
     }, 15000);
     removePendingMetadata(photo.id);
   } catch (e) {
@@ -1156,12 +1163,13 @@ async function flushPendingMetadata() {
     const entries = Object.values(pending);
     if (!entries.length) return;
     for (const meta of entries) {
-      if (!meta.cloudObject) continue;
+      if (!meta.id) continue;
       try {
-        await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
-          method: "PATCH",
+        const edits = { title: meta.title || "", description: meta.description || "", category: meta.category, tags: meta.tags, favorite: meta.favorite, editedAt: meta.editedAt };
+        await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/user-edits`, {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ objectName: meta.cloudObject, metadata: meta })
+          body: JSON.stringify({ id: meta.id, edits })
         }, 15000);
         removePendingMetadata(meta.id);
       } catch {}
