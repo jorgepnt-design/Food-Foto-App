@@ -87,11 +87,14 @@
       <section id="upload-view" class="view">
         <div id="drop-zone" class="drop-zone">
           <div class="drop-content">
-            <div class="drop-icon">⇧</div>
-            <h3 data-i18n="dropTitle">Bilder hier ablegen</h3>
-            <label id="choose-files" class="file-picker-button" for="file-input" data-i18n="choosePhotos">Bilder auswählen</label>
+            <div class="drop-icon">📷</div>
+            <h3>Fotos hochladen</h3>
+            <label id="choose-files" class="file-picker-button" for="file-input">
+              Fotos aus Bibliothek wählen
+            </label>
             <input id="file-input" class="file-input" type="file" accept="image/*,.heic,.heif" multiple />
-            <p data-i18n="dropText">Oder anklicken und mehrere Food-Fotos auswählen. EXIF-Daten werden automatisch gelesen.</p>
+            <p class="drop-hint-desktop">Auf dem Computer: Bilder hier reinziehen oder oben klicken.</p>
+            <p class="drop-hint-mobile">Mehrere Fotos gleichzeitig wählen: lange auf ein Foto tippen → "Auswählen" → weitere antippen → Teilen.</p>
           </div>
         </div>
         <div id="upload-list" class="upload-list"></div>

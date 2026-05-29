@@ -192,6 +192,11 @@ textarea { resize: vertical; }
 }
 .drop-content h3, .drop-content p { margin: 0 0 8px; }
 .drop-content p, .upload-list { color: var(--muted); }
+.drop-hint-mobile { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .drop-hint-desktop { display: none; }
+  .drop-hint-mobile { display: block; font-size: 0.85rem; margin-top: 12px; }
+}
 .file-input {
   position: absolute;
   width: 1px;
