@@ -515,6 +515,23 @@ async function handleFiles(fileList) {
   const endpoint = getApiEndpoint();
   if (endpoint) wakeUpRender(endpoint);
 
+  const total = files.length;
+  let done = 0;
+  const progressBox = $("#upload-progress");
+  const progressFill = $("#upload-progress-fill");
+  const progressText = $("#upload-progress-text");
+  const progressPct = $("#upload-progress-pct");
+
+  function updateProgress() {
+    const pct = Math.round((done / total) * 100);
+    progressFill.style.width = `${pct}%`;
+    progressText.textContent = `${done} / ${total} Foto${total === 1 ? "" : "s"}`;
+    progressPct.textContent = `${pct}%`;
+  }
+
+  progressBox.classList.remove("hidden");
+  updateProgress();
+
   for (const file of files) {
     const item = document.createElement("div");
     item.className = "upload-item";
@@ -566,7 +583,14 @@ async function handleFiles(fileList) {
     }
 
     await savePhotoBestEffort(photo, item);
+    done++;
+    updateProgress();
   }
+
+  progressText.textContent = `✓ ${total} Foto${total === 1 ? "" : "s"} hochgeladen`;
+  progressPct.textContent = "Fertig";
+  progressFill.style.background = "#27ae60";
+  setTimeout(() => progressBox.classList.add("hidden"), 3000);
 
   render();
   switchView("gallery");
