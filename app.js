@@ -309,6 +309,43 @@ function clearFilters() {
   render();
 }
 
+// ── Render wecken (Free-Tier schläft nach 15 min ein) ────────────
+async function wakeUpRender(endpoint) {
+  try {
+    await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) });
+  } catch {
+    // ignorieren — nur wecken
+  }
+}
+
+// ── Fetch mit Retry (1x nach Kaltstart) ─────────────────────────
+async function fetchWithRetry(url, options, retries = 2, delayMs = 8000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45000);
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}: ${body || response.statusText}`);
+      }
+      return response;
+    } catch (error) {
+      if (attempt === retries) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+// ── Status-Text im Upload-Item setzen ───────────────────────────
+function setUploadItemStatus(item, text, isError = false) {
+  const strong = item.querySelector("strong");
+  if (!strong) return;
+  strong.textContent = text;
+  strong.style.color = isError ? "#c0392b" : "";
+}
+
 async function handleFiles(fileList) {
   const files = Array.from(fileList).filter(isSupportedImageFile);
   const uploadList = $("#upload-list");
@@ -319,12 +356,26 @@ async function handleFiles(fileList) {
     uploadList.prepend(item);
     return;
   }
+
+  const endpoint = getApiEndpoint();
+
+  // Render vorab wecken (läuft im Hintergrund, blockiert nicht)
+  if (endpoint) wakeUpRender(endpoint);
+
   for (const file of files) {
     const item = document.createElement("div");
     item.className = "upload-item";
     item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Import...</strong>`;
     uploadList.prepend(item);
-    const [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
+
+    let dataUrl, buffer;
+    try {
+      [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
+    } catch (error) {
+      setUploadItemStatus(item, `Fehler beim Lesen: ${error.message}`, true);
+      continue;
+    }
+
     const exif = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
     const photo = {
@@ -338,50 +389,68 @@ async function handleFiles(fileList) {
       tags: suggestTags(file.name),
       description: "",
       favorite: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      storage: "local"
     };
-    item.querySelector("strong").textContent = getApiEndpoint() ? "Cloud-Upload..." : "Lokal...";
-    try {
-      const cloud = await uploadPhotoToCloud(file, photo);
-      if (cloud) {
-        photo.storage = "gcs";
-        photo.cloudObject = cloud.objectName;
-        photo.cloudUrl = cloud.url;
+
+    if (endpoint) {
+      setUploadItemStatus(item, "Cloud-Upload...");
+      try {
+        const cloud = await uploadPhotoToCloud(file, photo);
+        if (cloud) {
+          photo.storage = "gcs";
+          photo.cloudObject = cloud.objectName;
+          photo.cloudUrl = cloud.url;
+          delete photo.cloudError;
+        }
+      } catch (error) {
+        photo.storage = "local";
+        photo.cloudError = error.message;
+        setUploadItemStatus(item, "Cloud fehlgeschlagen — lokal gespeichert", true);
+        item.title = `Cloud-Fehler: ${error.message}`;
+        console.error("[Cloud-Upload]", file.name, error);
       }
-    } catch (error) {
-      photo.storage = "local";
-      photo.cloudError = error.message;
-      item.querySelector("strong").textContent = "Cloud fehlgeschlagen";
-      item.title = `Cloud-Upload fehlgeschlagen: ${error.message}`;
     }
+
     await savePhotoBestEffort(photo, item);
   }
+
   render();
   switchView("gallery");
 }
 
 async function savePhotoBestEffort(photo, item) {
+  // Versuch 1: Normal speichern
   try {
     await savePhoto(photo);
     upsertPhotoInMemory(photo);
-    item.querySelector("strong").textContent = photo.storage === "gcs" ? "Cloud + lokal" : photo.cloudError ? "Lokal (Cloud-Fehler)" : "Lokal";
-    if (photo.cloudError) item.title = `Cloud-Upload fehlgeschlagen: ${photo.cloudError}`;
+    // Nur überschreiben wenn kein Fehler-Status gesetzt ist
+    if (!item.querySelector("strong").style.color) {
+      setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal gespeichert" : "Lokal gespeichert");
+    } else if (photo.storage === "gcs") {
+      setUploadItemStatus(item, "☁ Cloud + lokal gespeichert");
+    }
     return;
   } catch (error) {
     photo.localSaveWarning = error.message;
   }
 
+  // Versuch 2: Komprimiert speichern
   try {
     photo.dataUrl = await resizeDataUrl(photo.dataUrl, 900, photo.type || "image/jpeg", 0.7);
     await savePhoto(photo);
     upsertPhotoInMemory(photo);
-    item.querySelector("strong").textContent = "Komprimiert gespeichert";
+    setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal (komprimiert)" : "Lokal komprimiert gespeichert");
     return;
   } catch (error) {
     photo.localSaveWarning = error.message;
     upsertPhotoInMemory(photo);
-    item.querySelector("strong").textContent = photo.storage === "gcs" ? "Nur Cloud" : "Nur temporär";
-    item.title = `Lokales Speichern fehlgeschlagen: ${error.message}`;
+    if (photo.storage === "gcs") {
+      setUploadItemStatus(item, "☁ Nur Cloud (lokal zu groß)");
+    } else {
+      setUploadItemStatus(item, "⚠ Nur temporär (IndexedDB voll)", true);
+      item.title = `Lokales Speichern fehlgeschlagen: ${error.message}`;
+    }
   }
 }
 
@@ -414,26 +483,36 @@ function normalizeImageType(type) {
 function updateCloudStatus() {
   const status = $("#cloud-status");
   if (!status) return;
-  status.textContent = getApiEndpoint()
-    ? "Cloud-Upload aktiv: Neue und bearbeitete Bilder werden an die Render-API gesendet."
-    : "Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.";
+  const endpoint = getApiEndpoint();
+  if (endpoint) {
+    status.textContent = `Cloud aktiv: ${endpoint} — Neue Bilder werden automatisch hochgeladen.`;
+    status.style.color = "#27ae60";
+  } else {
+    status.textContent = "Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.";
+    status.style.color = "";
+  }
 }
 
 async function testCloudConnection() {
   const endpoint = getApiEndpoint();
   const status = $("#cloud-status");
   if (!endpoint) {
-    status.textContent = "Bitte zuerst den Render-API-Endpunkt eintragen.";
+    status.textContent = "Bitte zuerst den API-Endpunkt eintragen.";
+    status.style.color = "#c0392b";
     return;
   }
+  status.textContent = "Wecke Render-Server auf...";
+  status.style.color = "";
   try {
-    status.textContent = "Teste Render-API...";
-    const health = await fetchJson(`${endpoint}/health`);
-    status.textContent = `Render erreichbar. Bucket: ${health.bucket || "unbekannt"}. Prüfe Bilder...`;
+    await fetchWithRetry(`${endpoint}/health`, { cache: "no-store" }, 2, 10000);
+    status.textContent = "Server erreichbar. Prüfe Bilder...";
     const list = await fetchJson(`${endpoint}/api/photos`);
-    status.textContent = `Cloud erreichbar. Gefundene Bilder: ${(list.photos || []).length}. Bucket: ${health.bucket || "unbekannt"}.`;
+    const count = (list.photos || []).length;
+    status.textContent = `✓ Cloud erreichbar. ${count} Bilder in der Cloud.`;
+    status.style.color = "#27ae60";
   } catch (error) {
-    status.textContent = `Cloud-Test fehlgeschlagen: ${error.message}`;
+    status.textContent = `✗ Cloud-Test fehlgeschlagen: ${error.message}`;
+    status.style.color = "#c0392b";
   }
 }
 
@@ -449,7 +528,7 @@ async function autoSyncFromCloud() {
 
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(await getResponseError(response));
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
 }
 
@@ -459,8 +538,7 @@ async function uploadPhotoToCloud(file, photo) {
   const form = new FormData();
   form.append("image", file, file.name);
   form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
-  const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  if (!response.ok) throw new Error(await getResponseError(response));
+  const response = await fetchWithRetry(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
   return response.json();
 }
 
@@ -471,40 +549,24 @@ async function uploadEditedImageToCloud(blob, photo) {
   form.append("image", blob, photo.name || "edited-image.jpg");
   form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
   if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
-  const response = await fetch(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  if (!response.ok) throw new Error(await getResponseError(response));
+  const response = await fetchWithRetry(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
   return response.json();
-}
-
-async function getResponseError(response) {
-  let details = "";
-  try {
-    const data = await response.clone().json();
-    details = data.message || data.error || "";
-  } catch {
-    try {
-      details = await response.text();
-    } catch {
-      details = "";
-    }
-  }
-  const suffix = details ? ` - ${details}` : "";
-  return `${response.status} ${response.statusText}${suffix}`;
 }
 
 async function syncFromCloud(options = {}) {
   const endpoint = getApiEndpoint();
   if (!endpoint) {
-    if (!options.silent) alert("Bitte zuerst den Render-API-Endpunkt eintragen.");
+    if (!options.silent) alert("Bitte zuerst den API-Endpunkt eintragen.");
     return;
   }
   const status = $("#cloud-status");
-  if (status) status.textContent = "Cloud wird synchronisiert...";
+  if (status) { status.textContent = "Cloud wird synchronisiert..."; status.style.color = ""; }
   let cloudPhotos;
   try {
-    cloudPhotos = await fetchJson(`${endpoint}/api/photos`);
+    const response = await fetchWithRetry(`${endpoint}/api/photos`, { cache: "no-store" }, 2, 10000);
+    cloudPhotos = await response.json();
   } catch (error) {
-    if (status) status.textContent = `Cloud-Synchronisierung fehlgeschlagen: ${error.message}`;
+    if (status) { status.textContent = `✗ Sync fehlgeschlagen: ${error.message}`; status.style.color = "#c0392b"; }
     return;
   }
   let imported = 0;
@@ -539,7 +601,7 @@ async function syncFromCloud(options = {}) {
   state.photos = await getAllPhotos();
   render();
   if (!options.silent) switchView("gallery");
-  if (status) status.textContent = `Cloud synchronisiert. ${imported} neue Bilder importiert. Insgesamt: ${state.photos.length}.`;
+  if (status) { status.textContent = `✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.`; status.style.color = "#27ae60"; }
 }
 
 function parseTags(value) {
@@ -573,10 +635,7 @@ function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
     const img = new Image();
     img.onload = () => {
       const ratio = Math.min(1, maxEdge / Math.max(img.width, img.height));
-      if (ratio >= 1) {
-        resolve(dataUrl);
-        return;
-      }
+      if (ratio >= 1) { resolve(dataUrl); return; }
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(img.width * ratio));
       canvas.height = Math.max(1, Math.round(img.height * ratio));
@@ -873,6 +932,7 @@ async function saveEditedImage() {
       }
     } catch (error) {
       photo.cloudError = error.message;
+      console.error("[Cloud-Upload bearbeitetes Bild]", error);
     }
   }
   await savePhoto(photo);
