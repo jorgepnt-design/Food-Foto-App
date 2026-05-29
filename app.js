@@ -248,9 +248,18 @@ function bindEvents() {
     const btn = $("#refresh-button");
     btn.disabled = true;
     btn.textContent = "↻ …";
-    await syncFromCloud();
+    state.photos = await getAllPhotos();
+    render();
     btn.disabled = false;
     btn.textContent = "↻ Aktualisieren";
+  });
+  $("#sync-button").addEventListener("click", async () => {
+    const btn = $("#sync-button");
+    btn.disabled = true;
+    btn.textContent = "☁ …";
+    await syncFromCloud();
+    btn.disabled = false;
+    btn.textContent = "☁ Synchronisieren";
   });
   $("#tutorial-button").addEventListener("click", () => $("#tutorial-modal").classList.remove("hidden"));
   $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
