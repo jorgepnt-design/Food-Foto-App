@@ -94,6 +94,7 @@ async function init() {
     state.photos = await getAllPhotos();
     render();
     autoSyncFromCloud();
+    checkPendingShare();
   } catch (error) {
     showStartupError(error);
     state.photos = [];
@@ -1059,6 +1060,41 @@ async function shareApp() {
 }
 
 function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-"); }
+
+// ─── Share Target ─────────────────────────────────────────────
+
+async function checkPendingShare() {
+  if (!("caches" in window)) return;
+  try {
+    const cache = await caches.open("foodporn-share-v1");
+    const manifestRes = await cache.match("/Food-Foto-App/pending-share-manifest");
+    if (!manifestRes) return;
+    const fileNames = await manifestRes.json();
+    if (!fileNames.length) return;
+
+    const files = [];
+    for (const name of fileNames) {
+      const res = await cache.match(`/Food-Foto-App/pending-share/${encodeURIComponent(name)}`);
+      if (!res) continue;
+      const buf = await res.arrayBuffer();
+      const type = res.headers.get("Content-Type") || "image/jpeg";
+      files.push(new File([buf], name, { type }));
+    }
+
+    // Cache leeren
+    await cache.delete("/Food-Foto-App/pending-share-manifest");
+    for (const name of fileNames) {
+      await cache.delete(`/Food-Foto-App/pending-share/${encodeURIComponent(name)}`);
+    }
+
+    if (files.length > 0) {
+      switchView("upload");
+      await handleFiles(files);
+    }
+  } catch (e) {
+    console.error("[Share Target]", e);
+  }
+}
 
 // ─── Lightbox ─────────────────────────────────────────────────
 

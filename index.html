@@ -213,7 +213,13 @@
     <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260529-2" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260529-3" onerror="document.body.classList.add('script-failed')"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
+        .catch(function(e) { console.warn("[SW]", e); });
+    }
+  </script>
   <script>
     window.addEventListener("error", function (event) {
       var main = document.querySelector(".main");
