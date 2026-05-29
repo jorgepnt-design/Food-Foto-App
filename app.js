@@ -748,6 +748,7 @@ function renderGallery() {
     node.querySelector(".photo-open").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".card-delete").addEventListener("click", () => deletePhoto(photo.id));
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
       await savePhoto(photo);
@@ -833,9 +834,20 @@ async function toggleSelectedFavorite() {
   render();
 }
 
+async function deletePhoto(id) {
+  const photo = state.photos.find((p) => p.id === id);
+  if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
+  await deletePhotoById(photo);
+}
+
 async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
+  await deletePhotoById(photo);
+  closeDetail();
+}
+
+async function deletePhotoById(photo) {
   if (photo.cloudObject) {
     setCloudStatus("⏳ Aus Cloud löschen...", "#e67e22");
     const awake = await ensureServerAwake(DEFAULT_API_ENDPOINT);
@@ -854,7 +866,6 @@ async function deleteSelected() {
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
   render();
-  closeDetail();
 }
 
 // ─── Image Editing ───────────────────────────────────────────────
