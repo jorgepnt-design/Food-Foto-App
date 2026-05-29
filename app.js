@@ -453,8 +453,18 @@ async function syncFromCloud(options = {}) {
       cloudUrl: cloudPhoto.cloudUrl,
       editedAt: cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
     };
-    if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
-    else { await savePhoto(merged); state.photos.push(merged); imported++; }
+    if (existing) {
+      const localNewer = existing.editedAt && merged.editedAt && new Date(existing.editedAt) > new Date(merged.editedAt);
+      if (localNewer) {
+        // Lokale Metadaten sind neuer — nur Cloud-URLs aktualisieren
+        existing.dataUrl = merged.dataUrl;
+        existing.cloudUrl = merged.cloudUrl;
+        existing.cloudObject = merged.cloudObject;
+      } else {
+        Object.assign(existing, merged);
+      }
+      await savePhoto(existing);
+    } else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
 
   state.photos = await getAllPhotos();
@@ -871,12 +881,16 @@ async function saveDetails(event) {
   await savePhoto(photo);
   if (photo.cloudObject) {
     try {
+      await ensureServerAwake(DEFAULT_API_ENDPOINT);
       await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ objectName: photo.cloudObject, metadata: withoutDataUrl(photo) })
       }, 30000);
-    } catch (e) { console.warn("[Meta-Update]", e); }
+    } catch (e) {
+      console.warn("[Meta-Update]", e);
+      alert("Metadaten konnten nicht in der Cloud gespeichert werden. Bitte erneut versuchen wenn der Server erreichbar ist.");
+    }
   }
   state.photos = await getAllPhotos();
   render();
