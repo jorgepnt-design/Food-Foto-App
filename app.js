@@ -1,6 +1,6 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
-const DEFAULT_API_ENDPOINT = "https://food-foto-app-api.onrender.com";
+const DEFAULT_API_ENDPOINT = "https://food-foto-app.onrender.com";
 const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
 
 const translations = {
@@ -85,6 +85,11 @@ function safeSet(key, value) {
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  const _ep = safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint");
+  if (!_ep || _ep.includes("food-foto-app-api")) {
+    safeSet("foodporn-api-endpoint", "https://food-foto-app.onrender.com");
+    safeSet("mealvault-api-endpoint", "https://food-foto-app.onrender.com");
+  }
   setupCategorySelects();
   bindEvents();
   applyLanguage();
