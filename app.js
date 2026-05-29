@@ -244,6 +244,14 @@ function bindEvents() {
   $("#export-button").addEventListener("click", exportZip);
   $("#metadata-export").addEventListener("click", exportMetadata);
   $("#share-button").addEventListener("click", shareApp);
+  $("#refresh-button").addEventListener("click", async () => {
+    const btn = $("#refresh-button");
+    btn.disabled = true;
+    btn.textContent = "↻ …";
+    await syncFromCloud();
+    btn.disabled = false;
+    btn.textContent = "↻ Aktualisieren";
+  });
   $("#tutorial-button").addEventListener("click", () => $("#tutorial-modal").classList.remove("hidden"));
   $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
   $("#language-toggle").addEventListener("click", () => {
