@@ -243,15 +243,9 @@ function bindEvents() {
     applyLanguage();
   });
   $("#cloud-provider").value = safeGet("foodporn-cloud-provider") || safeGet("mealvault-cloud-provider") || "Google Cloud Storage";
-  $("#api-endpoint").value = getApiEndpoint();
-  persistApiEndpoint($("#api-endpoint").value);
+  $("#api-endpoint").value = DEFAULT_API_ENDPOINT;
+  $("#api-endpoint").readOnly = true;
   $("#cloud-provider").addEventListener("change", () => safeSet("foodporn-cloud-provider", $("#cloud-provider").value));
-  $("#api-endpoint").addEventListener("input", () => { persistApiEndpoint($("#api-endpoint").value); updateCloudStatus(); });
-  $("#api-endpoint").addEventListener("blur", () => {
-    $("#api-endpoint").value = getApiEndpoint();
-    persistApiEndpoint($("#api-endpoint").value);
-    updateCloudStatus();
-  });
   $("#cloud-test").addEventListener("click", testCloudConnection);
   $("#cloud-sync").addEventListener("click", () => syncFromCloud());
   updateCloudStatus();
@@ -285,7 +279,7 @@ function clearFilters() {
 // ─── Cloud Utilities ──────────────────────────────────────────────
 
 function getApiEndpoint() {
-  return ($("#api-endpoint").value || safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint") || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+  return DEFAULT_API_ENDPOINT;
 }
 
 function persistApiEndpoint(value) {
