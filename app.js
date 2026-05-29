@@ -412,7 +412,11 @@ async function syncFromCloud(options = {}) {
     return;
   }
 
-  // Schritt 2: Fotos laden
+  // Schritt 2: Ausstehende Metadaten zuerst in Cloud schreiben
+  setCloudStatus("☁ Metadaten aktualisieren...", "#e67e22");
+  await flushPendingMetadata();
+
+  // Schritt 3: Fotos laden (jetzt mit aktuellen Metadaten)
   setCloudStatus("☁ Lade Fotos aus der Cloud...", "#e67e22");
   let cloudPhotos;
   try {
@@ -422,9 +426,6 @@ async function syncFromCloud(options = {}) {
     setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
     return;
   }
-
-  // Schritt 3: Ausstehende Metadaten-Updates in Cloud schreiben
-  await flushPendingMetadata();
 
   // Schritt 4: In Cloud gelöschte Fotos lokal entfernen
   const cloudObjects = new Set((cloudPhotos.photos || []).map((p) => p.cloudObject).filter(Boolean));
