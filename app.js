@@ -73,17 +73,11 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 function safeGet(key) {
-  try {
-    return localStorage.getItem(key) || "";
-  } catch {
-    return "";
-  }
+  try { return localStorage.getItem(key) || ""; } catch { return ""; }
 }
 
 function safeSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
+  try { localStorage.setItem(key, value); } catch {
     document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; max-age=31536000; path=/; SameSite=Lax`;
   }
 }
@@ -116,9 +110,7 @@ function showStartupError(error) {
   main.prepend(box);
 }
 
-function openDb() {
-  return openNamedDb(DB_NAME);
-}
+function openDb() { return openNamedDb(DB_NAME); }
 
 function openNamedDb(name) {
   return new Promise((resolve, reject) => {
@@ -135,7 +127,7 @@ function openNamedDb(name) {
 async function migrateLegacyPhotos() {
   const legacyNames = ["foodporn-db"];
   const existing = await getAllPhotos();
-  const known = new Set(existing.map((photo) => photo.id));
+  const known = new Set(existing.map((p) => p.id));
   for (const name of legacyNames) {
     if (name === DB_NAME) continue;
     const legacyPhotos = await getPhotosFromDb(name);
@@ -157,11 +149,7 @@ async function getPhotosFromDb(name) {
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
-  } catch {
-    return [];
-  } finally {
-    if (db) db.close();
-  }
+  } catch { return []; } finally { if (db) db.close(); }
 }
 
 function tx(mode = "readonly") {
@@ -181,8 +169,7 @@ function getAllPhotos() {
 function savePhoto(photo) {
   if (!state.db) {
     const index = state.photos.findIndex((item) => item.id === photo.id);
-    if (index >= 0) state.photos[index] = photo;
-    else state.photos.unshift(photo);
+    if (index >= 0) state.photos[index] = photo; else state.photos.unshift(photo);
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
@@ -193,10 +180,7 @@ function savePhoto(photo) {
 }
 
 function removePhoto(id) {
-  if (!state.db) {
-    state.photos = state.photos.filter((photo) => photo.id !== id);
-    return Promise.resolve();
-  }
+  if (!state.db) { state.photos = state.photos.filter((p) => p.id !== id); return Promise.resolve(); }
   return new Promise((resolve, reject) => {
     const request = tx("readwrite").delete(id);
     request.onsuccess = () => resolve();
@@ -210,32 +194,26 @@ function setupCategorySelects() {
 }
 
 function bindEvents() {
-  $$(".nav-tab").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
-  $$(".quick-filter").forEach((button) => button.addEventListener("click", () => {
-    state.quick = button.dataset.quick;
-    $$(".quick-filter").forEach((item) => item.classList.toggle("active", item === button));
+  $$(".nav-tab").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+  $$(".quick-filter").forEach((btn) => btn.addEventListener("click", () => {
+    state.quick = btn.dataset.quick;
+    $$(".quick-filter").forEach((item) => item.classList.toggle("active", item === btn));
     switchView("gallery");
     render();
   }));
   ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
   $("#clear-filters").addEventListener("click", clearFilters);
-  $$("[data-go-upload]").forEach((button) => button.addEventListener("click", () => switchView("upload")));
-  $$(".density").forEach((button) => button.addEventListener("click", () => {
-    $$(".density").forEach((item) => item.classList.toggle("active", item === button));
-    $("#gallery-grid").classList.toggle("compact", button.dataset.density === "compact");
+  $$("[data-go-upload]").forEach((btn) => btn.addEventListener("click", () => switchView("upload")));
+  $$(".density").forEach((btn) => btn.addEventListener("click", () => {
+    $$(".density").forEach((item) => item.classList.toggle("active", item === btn));
+    $("#gallery-grid").classList.toggle("compact", btn.dataset.density === "compact");
   }));
 
   const drop = $("#drop-zone");
-  $("#file-input").addEventListener("change", (event) => handleFiles(event.target.files));
-  ["dragenter", "dragover"].forEach((name) => drop.addEventListener(name, (event) => {
-    event.preventDefault();
-    drop.classList.add("dragging");
-  }));
-  ["dragleave", "drop"].forEach((name) => drop.addEventListener(name, (event) => {
-    event.preventDefault();
-    drop.classList.remove("dragging");
-  }));
-  drop.addEventListener("drop", (event) => handleFiles(event.dataTransfer.files));
+  $("#file-input").addEventListener("change", (e) => handleFiles(e.target.files));
+  ["dragenter", "dragover"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.remove("dragging"); }));
+  drop.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
 
   $("#close-detail").addEventListener("click", closeDetail);
   $("#detail-form").addEventListener("submit", saveDetails);
@@ -250,9 +228,9 @@ function bindEvents() {
   $("#filter-mono").addEventListener("click", () => editImage({ filter: state.edit.filter === "mono" ? "none" : "mono" }));
   $("#reset-edit").addEventListener("click", resetEdit);
   $("#save-edit").addEventListener("click", saveEditedImage);
-  $("#brightness-range").addEventListener("input", (event) => editImage({ brightness: Number(event.target.value) }));
-  $("#contrast-range").addEventListener("input", (event) => editImage({ contrast: Number(event.target.value) }));
-  $("#saturation-range").addEventListener("input", (event) => editImage({ saturation: Number(event.target.value) }));
+  $("#brightness-range").addEventListener("input", (e) => editImage({ brightness: Number(e.target.value) }));
+  $("#contrast-range").addEventListener("input", (e) => editImage({ contrast: Number(e.target.value) }));
+  $("#saturation-range").addEventListener("input", (e) => editImage({ saturation: Number(e.target.value) }));
 
   $("#export-button").addEventListener("click", exportZip);
   $("#metadata-export").addEventListener("click", exportMetadata);
@@ -268,31 +246,26 @@ function bindEvents() {
   $("#api-endpoint").value = getApiEndpoint();
   persistApiEndpoint($("#api-endpoint").value);
   $("#cloud-provider").addEventListener("change", () => safeSet("foodporn-cloud-provider", $("#cloud-provider").value));
-  $("#api-endpoint").addEventListener("input", () => {
-    persistApiEndpoint($("#api-endpoint").value);
-    updateCloudStatus();
-  });
+  $("#api-endpoint").addEventListener("input", () => { persistApiEndpoint($("#api-endpoint").value); updateCloudStatus(); });
   $("#api-endpoint").addEventListener("blur", () => {
     $("#api-endpoint").value = getApiEndpoint();
     persistApiEndpoint($("#api-endpoint").value);
     updateCloudStatus();
   });
   $("#cloud-test").addEventListener("click", testCloudConnection);
-  $("#cloud-sync").addEventListener("click", syncFromCloud);
+  $("#cloud-sync").addEventListener("click", () => syncFromCloud());
   updateCloudStatus();
 }
 
 function applyLanguage() {
-  $$("[data-i18n]").forEach((node) => {
-    node.textContent = translations[state.lang][node.dataset.i18n] || node.textContent;
-  });
+  $$("[data-i18n]").forEach((node) => { node.textContent = translations[state.lang][node.dataset.i18n] || node.textContent; });
   $("#language-toggle").textContent = state.lang.toUpperCase();
 }
 
 function switchView(view) {
   state.activeView = view;
-  $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
-  $$(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}-view`));
+  $$(".nav-tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  $$(".view").forEach((sec) => sec.classList.toggle("active", sec.id === `${view}-view`));
   const titleMap = { gallery: "galleryTitle", upload: "upload", stats: "stats", settings: "settings" };
   $("#view-title").textContent = translations[state.lang][titleMap[view]];
   if (view === "stats") renderStats();
@@ -309,36 +282,161 @@ function clearFilters() {
   render();
 }
 
-// ── Render wecken (Free-Tier schläft nach 15 min ein) ────────────
+// ─── Cloud Utilities ──────────────────────────────────────────────
+
+function getApiEndpoint() {
+  return ($("#api-endpoint").value || safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint") || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+}
+
+function persistApiEndpoint(value) {
+  const endpoint = (value || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+  safeSet("foodporn-api-endpoint", endpoint);
+  safeSet("mealvault-api-endpoint", endpoint);
+  return endpoint;
+}
+
+function setCloudStatus(text, color = "") {
+  const el = $("#cloud-status");
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color;
+}
+
+function updateCloudStatus() {
+  const endpoint = getApiEndpoint();
+  if (endpoint) {
+    setCloudStatus(`Cloud aktiv: ${endpoint}`, "#27ae60");
+  } else {
+    setCloudStatus("Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.", "");
+  }
+}
+
+// Weckt den Render-Server auf und wartet bis er antwortet (max 55s)
+async function ensureServerAwake(endpoint) {
+  const maxWait = 55000;
+  const interval = 3000;
+  const start = Date.now();
+  setCloudStatus("⏳ Render-Server wird gestartet (kann bis zu 60s dauern)...", "#e67e22");
+  while (Date.now() - start < maxWait) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), interval);
+      const res = await fetch(`${endpoint}/health`, { cache: "no-store", signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        setCloudStatus("✓ Server bereit.", "#27ae60");
+        return true;
+      }
+    } catch {
+      // noch nicht bereit, weiter warten
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  return false;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`);
+    }
+    return res;
+  } catch (error) {
+    clearTimeout(timer);
+    throw error;
+  }
+}
+
+async function testCloudConnection() {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) { setCloudStatus("Bitte zuerst den API-Endpunkt eintragen.", "#c0392b"); return; }
+  setCloudStatus("⏳ Verbinde mit Render...", "#e67e22");
+  const awake = await ensureServerAwake(endpoint);
+  if (!awake) { setCloudStatus("✗ Server antwortet nicht nach 60s. Bitte Render-Dashboard prüfen.", "#c0392b"); return; }
+  try {
+    const res = await fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" });
+    const data = await res.json();
+    setCloudStatus(`✓ Cloud erreichbar. ${(data.photos || []).length} Bilder in der Cloud.`, "#27ae60");
+  } catch (error) {
+    setCloudStatus(`✗ Cloud-Test fehlgeschlagen: ${error.message}`, "#c0392b");
+  }
+}
+
+async function autoSyncFromCloud() {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return;
+  try { await syncFromCloud({ silent: true }); } catch { /* ignorieren beim Start */ }
+}
+
+async function syncFromCloud(options = {}) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) {
+    if (!options.silent) alert("Bitte zuerst den API-Endpunkt eintragen.");
+    return;
+  }
+
+  // Schritt 1: Server wecken
+  const awake = await ensureServerAwake(endpoint);
+  if (!awake) {
+    if (!options.silent) setCloudStatus("✗ Server antwortet nicht. Bitte später erneut versuchen.", "#c0392b");
+    return;
+  }
+
+  // Schritt 2: Fotos laden
+  setCloudStatus("☁ Lade Fotos aus der Cloud...", "#e67e22");
+  let cloudPhotos;
+  try {
+    const res = await fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" }, 30000);
+    cloudPhotos = await res.json();
+  } catch (error) {
+    setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
+    return;
+  }
+
+  // Schritt 3: Mergen
+  let imported = 0;
+  for (const cloudPhoto of cloudPhotos.photos || []) {
+    const existing = state.photos.find((p) => p.cloudObject === cloudPhoto.cloudObject || p.id === cloudPhoto.id);
+    const merged = {
+      id: cloudPhoto.id || crypto.randomUUID(),
+      name: cloudPhoto.name || getCloudObjectFileName(cloudPhoto.cloudObject) || "cloud-photo.jpg",
+      type: cloudPhoto.type || "image/jpeg",
+      dataUrl: cloudPhoto.cloudUrl,
+      takenAt: cloudPhoto.takenAt || cloudPhoto.createdAt || new Date().toISOString(),
+      camera: cloudPhoto.camera || "Unbekannt",
+      category: cloudPhoto.category || "Sonstiges",
+      tags: Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags),
+      description: cloudPhoto.description || "",
+      favorite: cloudPhoto.favorite === true || cloudPhoto.favorite === "true",
+      createdAt: cloudPhoto.createdAt || new Date().toISOString(),
+      storage: "gcs",
+      cloudObject: cloudPhoto.cloudObject,
+      cloudUrl: cloudPhoto.cloudUrl,
+      editedAt: cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
+    };
+    if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
+    else { await savePhoto(merged); state.photos.push(merged); imported++; }
+  }
+
+  state.photos = await getAllPhotos();
+  render();
+  if (!options.silent) switchView("gallery");
+  setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.`, "#27ae60");
+}
+
+// ─── Upload ───────────────────────────────────────────────────────
+
 async function wakeUpRender(endpoint) {
   try {
     await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) });
-  } catch {
-    // ignorieren — nur wecken
-  }
+  } catch { /* ignorieren */ }
 }
 
-// ── Fetch mit Retry (1x nach Kaltstart) ─────────────────────────
-async function fetchWithRetry(url, options, retries = 2, delayMs = 8000) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 45000);
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(`HTTP ${response.status}: ${body || response.statusText}`);
-      }
-      return response;
-    } catch (error) {
-      if (attempt === retries) throw error;
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-}
-
-// ── Status-Text im Upload-Item setzen ───────────────────────────
 function setUploadItemStatus(item, text, isError = false) {
   const strong = item.querySelector("strong");
   if (!strong) return;
@@ -358,8 +456,6 @@ async function handleFiles(fileList) {
   }
 
   const endpoint = getApiEndpoint();
-
-  // Render vorab wecken (läuft im Hintergrund, blockiert nicht)
   if (endpoint) wakeUpRender(endpoint);
 
   for (const file of files) {
@@ -372,7 +468,7 @@ async function handleFiles(fileList) {
     try {
       [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
     } catch (error) {
-      setUploadItemStatus(item, `Fehler beim Lesen: ${error.message}`, true);
+      setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
     }
 
@@ -420,56 +516,58 @@ async function handleFiles(fileList) {
 }
 
 async function savePhotoBestEffort(photo, item) {
-  // Versuch 1: Normal speichern
   try {
     await savePhoto(photo);
     upsertPhotoInMemory(photo);
-    // Nur überschreiben wenn kein Fehler-Status gesetzt ist
     if (!item.querySelector("strong").style.color) {
-      setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal gespeichert" : "Lokal gespeichert");
+      setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal" : "Lokal gespeichert");
     } else if (photo.storage === "gcs") {
-      setUploadItemStatus(item, "☁ Cloud + lokal gespeichert");
+      setUploadItemStatus(item, "☁ Cloud + lokal");
     }
     return;
-  } catch (error) {
-    photo.localSaveWarning = error.message;
-  }
+  } catch (error) { photo.localSaveWarning = error.message; }
 
-  // Versuch 2: Komprimiert speichern
   try {
     photo.dataUrl = await resizeDataUrl(photo.dataUrl, 900, photo.type || "image/jpeg", 0.7);
     await savePhoto(photo);
     upsertPhotoInMemory(photo);
-    setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal (komprimiert)" : "Lokal komprimiert gespeichert");
+    setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Cloud + lokal (komprimiert)" : "Lokal komprimiert");
     return;
   } catch (error) {
     photo.localSaveWarning = error.message;
     upsertPhotoInMemory(photo);
-    if (photo.storage === "gcs") {
-      setUploadItemStatus(item, "☁ Nur Cloud (lokal zu groß)");
-    } else {
-      setUploadItemStatus(item, "⚠ Nur temporär (IndexedDB voll)", true);
-      item.title = `Lokales Speichern fehlgeschlagen: ${error.message}`;
-    }
+    setUploadItemStatus(item, photo.storage === "gcs" ? "☁ Nur Cloud" : "⚠ Nur temporär", photo.storage !== "gcs");
+    if (photo.storage !== "gcs") item.title = `Lokales Speichern fehlgeschlagen: ${error.message}`;
   }
 }
 
 function upsertPhotoInMemory(photo) {
   const index = state.photos.findIndex((item) => item.id === photo.id);
-  if (index >= 0) state.photos[index] = photo;
-  else state.photos.unshift(photo);
+  if (index >= 0) state.photos[index] = photo; else state.photos.unshift(photo);
 }
 
-function getApiEndpoint() {
-  return ($("#api-endpoint").value || safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint") || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
+async function uploadPhotoToCloud(file, photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return null;
+  const form = new FormData();
+  form.append("image", file, file.name);
+  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  const res = await fetchWithTimeout(`${endpoint}/api/photos/upload`, { method: "POST", body: form }, 45000);
+  return res.json();
 }
 
-function persistApiEndpoint(value) {
-  const endpoint = (value || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
-  safeSet("foodporn-api-endpoint", endpoint);
-  safeSet("mealvault-api-endpoint", endpoint);
-  return endpoint;
+async function uploadEditedImageToCloud(blob, photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint) return null;
+  const form = new FormData();
+  form.append("image", blob, photo.name || "edited-image.jpg");
+  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
+  const res = await fetchWithTimeout(`${endpoint}/api/photos/upload`, { method: "POST", body: form }, 45000);
+  return res.json();
 }
+
+// ─── Image helpers ────────────────────────────────────────────────
 
 function isSupportedImageFile(file) {
   const name = (file.name || "").toLowerCase();
@@ -480,134 +578,10 @@ function normalizeImageType(type) {
   return type && type.startsWith("image/") ? type : "image/jpeg";
 }
 
-function updateCloudStatus() {
-  const status = $("#cloud-status");
-  if (!status) return;
-  const endpoint = getApiEndpoint();
-  if (endpoint) {
-    status.textContent = `Cloud aktiv: ${endpoint} — Neue Bilder werden automatisch hochgeladen.`;
-    status.style.color = "#27ae60";
-  } else {
-    status.textContent = "Cloud-Upload ist aktiv, sobald ein API-Endpunkt eingetragen ist.";
-    status.style.color = "";
-  }
-}
-
-async function testCloudConnection() {
-  const endpoint = getApiEndpoint();
-  const status = $("#cloud-status");
-  if (!endpoint) {
-    status.textContent = "Bitte zuerst den API-Endpunkt eintragen.";
-    status.style.color = "#c0392b";
-    return;
-  }
-  status.textContent = "Wecke Render-Server auf...";
-  status.style.color = "";
-  try {
-    await fetchWithRetry(`${endpoint}/health`, { cache: "no-store" }, 2, 10000);
-    status.textContent = "Server erreichbar. Prüfe Bilder...";
-    const list = await fetchJson(`${endpoint}/api/photos`);
-    const count = (list.photos || []).length;
-    status.textContent = `✓ Cloud erreichbar. ${count} Bilder in der Cloud.`;
-    status.style.color = "#27ae60";
-  } catch (error) {
-    status.textContent = `✗ Cloud-Test fehlgeschlagen: ${error.message}`;
-    status.style.color = "#c0392b";
-  }
-}
-
-async function autoSyncFromCloud() {
-  const endpoint = getApiEndpoint();
-  if (!endpoint) return;
-  try {
-    await syncFromCloud({ silent: true });
-  } catch {
-    updateCloudStatus();
-  }
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
-}
-
-async function uploadPhotoToCloud(file, photo) {
-  const endpoint = getApiEndpoint();
-  if (!endpoint) return null;
-  const form = new FormData();
-  form.append("image", file, file.name);
-  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
-  const response = await fetchWithRetry(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  return response.json();
-}
-
-async function uploadEditedImageToCloud(blob, photo) {
-  const endpoint = getApiEndpoint();
-  if (!endpoint) return null;
-  const form = new FormData();
-  form.append("image", blob, photo.name || "edited-image.jpg");
-  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
-  if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
-  const response = await fetchWithRetry(`${endpoint}/api/photos/upload`, { method: "POST", body: form });
-  return response.json();
-}
-
-async function syncFromCloud(options = {}) {
-  const endpoint = getApiEndpoint();
-  if (!endpoint) {
-    if (!options.silent) alert("Bitte zuerst den API-Endpunkt eintragen.");
-    return;
-  }
-  const status = $("#cloud-status");
-  if (status) { status.textContent = "Cloud wird synchronisiert..."; status.style.color = ""; }
-  let cloudPhotos;
-  try {
-    const response = await fetchWithRetry(`${endpoint}/api/photos`, { cache: "no-store" }, 2, 10000);
-    cloudPhotos = await response.json();
-  } catch (error) {
-    if (status) { status.textContent = `✗ Sync fehlgeschlagen: ${error.message}`; status.style.color = "#c0392b"; }
-    return;
-  }
-  let imported = 0;
-  for (const cloudPhoto of cloudPhotos.photos || []) {
-    const existing = state.photos.find((photo) => photo.cloudObject === cloudPhoto.cloudObject || photo.id === cloudPhoto.id);
-    const merged = {
-      id: cloudPhoto.id || crypto.randomUUID(),
-      name: cloudPhoto.name || getCloudObjectFileName(cloudPhoto.cloudObject) || "cloud-photo.jpg",
-      type: cloudPhoto.type || "image/jpeg",
-      dataUrl: cloudPhoto.cloudUrl,
-      takenAt: cloudPhoto.takenAt || cloudPhoto.createdAt || new Date().toISOString(),
-      camera: cloudPhoto.camera || "Unbekannt",
-      category: cloudPhoto.category || "Sonstiges",
-      tags: Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags),
-      description: cloudPhoto.description || "",
-      favorite: cloudPhoto.favorite === true || cloudPhoto.favorite === "true",
-      createdAt: cloudPhoto.createdAt || new Date().toISOString(),
-      storage: "gcs",
-      cloudObject: cloudPhoto.cloudObject,
-      cloudUrl: cloudPhoto.cloudUrl,
-      editedAt: cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
-    };
-    if (existing) {
-      Object.assign(existing, merged);
-      await savePhoto(existing);
-    } else {
-      await savePhoto(merged);
-      state.photos.push(merged);
-      imported += 1;
-    }
-  }
-  state.photos = await getAllPhotos();
-  render();
-  if (!options.silent) switchView("gallery");
-  if (status) { status.textContent = `✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.`; status.style.color = "#27ae60"; }
-}
-
 function parseTags(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
-  return String(value).split(",").map((tag) => tag.trim()).filter(Boolean);
+  return String(value).split(",").map((t) => t.trim()).filter(Boolean);
 }
 
 function getCloudObjectFileName(objectName) {
@@ -639,8 +613,7 @@ function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(img.width * ratio));
       canvas.height = Math.max(1, Math.round(img.height * ratio));
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL(type, quality));
     };
     img.onerror = () => resolve(dataUrl);
@@ -662,10 +635,8 @@ function parseExif(buffer) {
   if (view.getUint16(0) !== 0xffd8) return {};
   let offset = 2;
   while (offset < view.byteLength) {
-    const marker = view.getUint16(offset);
-    offset += 2;
-    const size = view.getUint16(offset);
-    offset += 2;
+    const marker = view.getUint16(offset); offset += 2;
+    const size = view.getUint16(offset); offset += 2;
     if (marker === 0xffe1 && getString(view, offset, 4) === "Exif") return parseTiff(view, offset + 6);
     offset += size - 2;
   }
@@ -685,7 +656,7 @@ function parseTiff(view, tiffStart) {
 function readIfd(view, offset, tiffStart, little) {
   const result = {};
   const entries = view.getUint16(offset, little);
-  for (let i = 0; i < entries; i += 1) {
+  for (let i = 0; i < entries; i++) {
     const entry = offset + 2 + i * 12;
     const tag = view.getUint16(entry, little);
     const type = view.getUint16(entry + 2, little);
@@ -701,7 +672,7 @@ function readIfd(view, offset, tiffStart, little) {
 
 function getString(view, offset, length) {
   let out = "";
-  for (let i = 0; i < length && offset + i < view.byteLength; i += 1) out += String.fromCharCode(view.getUint8(offset + i));
+  for (let i = 0; i < length && offset + i < view.byteLength; i++) out += String.fromCharCode(view.getUint8(offset + i));
   return out;
 }
 
@@ -723,10 +694,12 @@ function suggestCategory(isoDate) {
 function suggestTags(name) {
   const lower = name.toLowerCase();
   const tags = [];
-  [["veggie", "vegetarisch"], ["salad", "salat"], ["asia", "asiatisch"], ["pasta", "pasta"], ["soup", "suppe"], ["cake", "dessert"]]
+  [["veggie","vegetarisch"],["salad","salat"],["asia","asiatisch"],["pasta","pasta"],["soup","suppe"],["cake","dessert"]]
     .forEach(([needle, tag]) => { if (lower.includes(needle)) tags.push(tag); });
   return tags;
 }
+
+// ─── Render / Gallery ────────────────────────────────────────────
 
 function render() {
   state.filtered = filterPhotos();
@@ -751,7 +724,7 @@ function filterPhotos() {
     if (from && date < from) return false;
     if (to && date > to) return false;
     if (category && photo.category !== category) return false;
-    if (tag && !photo.tags.some((item) => item.toLowerCase().includes(tag))) return false;
+    if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
     return true;
   });
 }
@@ -789,6 +762,15 @@ function formatDate(iso) {
   return new Intl.DateTimeFormat(state.lang === "de" ? "de-DE" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 }
 
+function getDisplayImageUrl(photo) {
+  if (!photo.dataUrl) return "";
+  if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
+  const sep = photo.dataUrl.includes("?") ? "&" : "?";
+  return `${photo.dataUrl}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
+}
+
+// ─── Detail Panel ────────────────────────────────────────────────
+
 function openDetail(id) {
   const photo = state.photos.find((item) => item.id === id);
   if (!photo) return;
@@ -823,7 +805,7 @@ async function saveDetails(event) {
   if (!photo) return;
   photo.description = $("#detail-description").value.trim();
   photo.category = $("#detail-category").value;
-  photo.tags = $("#detail-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
   photo.takenAt = new Date($("#detail-date").value).toISOString();
   await savePhoto(photo);
   state.photos = await getAllPhotos();
@@ -831,9 +813,7 @@ async function saveDetails(event) {
   closeDetail();
 }
 
-function getSelected() {
-  return state.photos.find((photo) => photo.id === state.selectedId);
-}
+function getSelected() { return state.photos.find((p) => p.id === state.selectedId); }
 
 async function toggleSelectedFavorite() {
   const photo = getSelected();
@@ -853,15 +833,10 @@ async function deleteSelected() {
   closeDetail();
 }
 
-function editImage(changes) {
-  Object.assign(state.edit, changes);
-  drawSelectedImage();
-}
+// ─── Image Editing ───────────────────────────────────────────────
 
-function resetEdit() {
-  resetEditState();
-  drawSelectedImage();
-}
+function editImage(changes) { Object.assign(state.edit, changes); drawSelectedImage(); }
+function resetEdit() { resetEditState(); drawSelectedImage(); }
 
 function resetEditState() {
   state.edit = { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 };
@@ -896,19 +871,8 @@ function drawSelectedImage() {
   img.src = photo.dataUrl;
 }
 
-function getDisplayImageUrl(photo) {
-  if (!photo.dataUrl) return "";
-  if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
-  const separator = photo.dataUrl.includes("?") ? "&" : "?";
-  return `${photo.dataUrl}${separator}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
-}
-
 function buildCanvasFilter() {
-  const filters = [
-    `brightness(${state.edit.brightness}%)`,
-    `contrast(${state.edit.contrast}%)`,
-    `saturate(${state.edit.saturation}%)`
-  ];
+  const filters = [`brightness(${state.edit.brightness}%)`, `contrast(${state.edit.contrast}%)`, `saturate(${state.edit.saturation}%)`];
   if (state.edit.filter === "warm") filters.push("sepia(18%)", "saturate(118%)");
   if (state.edit.filter === "mono") filters.push("grayscale(100%)", "contrast(108%)");
   return filters.join(" ");
@@ -924,12 +888,7 @@ async function saveEditedImage() {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, photo.type || "image/jpeg", 0.92));
     try {
       const cloud = await uploadEditedImageToCloud(blob, photo);
-      if (cloud) {
-        photo.storage = "gcs";
-        photo.cloudObject = cloud.objectName;
-        photo.cloudUrl = cloud.url;
-        delete photo.cloudError;
-      }
+      if (cloud) { photo.storage = "gcs"; photo.cloudObject = cloud.objectName; photo.cloudUrl = cloud.url; delete photo.cloudError; }
     } catch (error) {
       photo.cloudError = error.message;
       console.error("[Cloud-Upload bearbeitetes Bild]", error);
@@ -942,10 +901,12 @@ async function saveEditedImage() {
   closeDetail();
 }
 
+// ─── Stats ───────────────────────────────────────────────────────
+
 function renderStats() {
   $("#stat-total").textContent = state.photos.length;
-  $("#stat-favorites").textContent = state.photos.filter((photo) => photo.favorite).length;
-  const categoryCounts = countBy(state.photos, (photo) => photo.category);
+  $("#stat-favorites").textContent = state.photos.filter((p) => p.favorite).length;
+  const categoryCounts = countBy(state.photos, (p) => p.category);
   const tagCounts = countTags(state.photos);
   $("#stat-top-category").textContent = topKey(categoryCounts) || "-";
   $("#stat-top-tag").textContent = topKey(tagCounts) || "-";
@@ -954,18 +915,11 @@ function renderStats() {
 }
 
 function countBy(items, getter) {
-  return items.reduce((acc, item) => {
-    const key = getter(item) || "Unbekannt";
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
+  return items.reduce((acc, item) => { const key = getter(item) || "Unbekannt"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
 }
 
 function countTags(items) {
-  return items.reduce((acc, photo) => {
-    (photo.tags || []).forEach((tag) => { acc[tag] = (acc[tag] || 0) + 1; });
-    return acc;
-  }, {});
+  return items.reduce((acc, photo) => { (photo.tags || []).forEach((t) => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
 }
 
 function topKey(counts) {
@@ -977,7 +931,7 @@ function renderBars(selector, counts) {
   const box = $(selector);
   box.innerHTML = "";
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const max = Math.max(1, ...entries.map((entry) => entry[1]));
+  const max = Math.max(1, ...entries.map((e) => e[1]));
   entries.forEach(([label, count]) => {
     const row = document.createElement("div");
     row.className = "bar-row";
@@ -987,6 +941,8 @@ function renderBars(selector, counts) {
   if (!entries.length) box.textContent = "-";
 }
 
+// ─── Export / Share ──────────────────────────────────────────────
+
 async function exportMetadata() {
   downloadBlob(new Blob([JSON.stringify(state.photos.map(withoutDataUrl), null, 2)], { type: "application/json" }), "foodporn-metadaten.json");
 }
@@ -994,28 +950,23 @@ async function exportMetadata() {
 async function exportZip() {
   const files = state.filtered.length ? state.filtered : state.photos;
   if (!files.length) return;
-  const zipFiles = files.map((photo) => ({ name: safeFileName(`${photo.category}-${photo.name}`), data: base64ToUint8(photo.dataUrl) }));
+  const zipFiles = files.map((p) => ({ name: safeFileName(`${p.category}-${p.name}`), data: base64ToUint8(p.dataUrl) }));
   zipFiles.push({ name: "metadata.json", data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2)) });
-  const zip = createZip(zipFiles);
-  downloadBlob(new Blob([zip], { type: "application/zip" }), `foodporn-export-${new Date().toISOString().slice(0, 10)}.zip`);
+  downloadBlob(new Blob([createZip(zipFiles)], { type: "application/zip" }), `foodporn-export-${new Date().toISOString().slice(0, 10)}.zip`);
 }
 
-function withoutDataUrl(photo) {
-  const { dataUrl, ...meta } = photo;
-  return meta;
-}
+function withoutDataUrl(photo) { const { dataUrl, ...meta } = photo; return meta; }
 
 function base64ToUint8(dataUrl) {
   const base64 = dataUrl.split(",")[1];
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 
 function createZip(files) {
-  const chunks = [];
-  const central = [];
+  const chunks = [], central = [];
   let offset = 0;
   files.forEach((file) => {
     const name = new TextEncoder().encode(file.name);
@@ -1023,82 +974,55 @@ function createZip(files) {
     const crc = crc32(data);
     const local = new Uint8Array(30 + name.length);
     const view = new DataView(local.buffer);
-    view.setUint32(0, 0x04034b50, true);
-    view.setUint16(4, 20, true);
-    view.setUint16(8, 0, true);
-    view.setUint32(14, crc, true);
-    view.setUint32(18, data.length, true);
-    view.setUint32(22, data.length, true);
-    view.setUint16(26, name.length, true);
-    local.set(name, 30);
+    view.setUint32(0, 0x04034b50, true); view.setUint16(4, 20, true); view.setUint16(8, 0, true);
+    view.setUint32(14, crc, true); view.setUint32(18, data.length, true); view.setUint32(22, data.length, true);
+    view.setUint16(26, name.length, true); local.set(name, 30);
     chunks.push(local, data);
     const header = new Uint8Array(46 + name.length);
     const hv = new DataView(header.buffer);
-    hv.setUint32(0, 0x02014b50, true);
-    hv.setUint16(4, 20, true);
-    hv.setUint16(6, 20, true);
-    hv.setUint32(16, crc, true);
-    hv.setUint32(20, data.length, true);
-    hv.setUint32(24, data.length, true);
-    hv.setUint16(28, name.length, true);
-    hv.setUint32(42, offset, true);
-    header.set(name, 46);
+    hv.setUint32(0, 0x02014b50, true); hv.setUint16(4, 20, true); hv.setUint16(6, 20, true);
+    hv.setUint32(16, crc, true); hv.setUint32(20, data.length, true); hv.setUint32(24, data.length, true);
+    hv.setUint16(28, name.length, true); hv.setUint32(42, offset, true); header.set(name, 46);
     central.push(header);
     offset += local.length + data.length;
   });
-  const centralSize = central.reduce((sum, item) => sum + item.length, 0);
+  const centralSize = central.reduce((s, i) => s + i.length, 0);
   const end = new Uint8Array(22);
   const ev = new DataView(end.buffer);
-  ev.setUint32(0, 0x06054b50, true);
-  ev.setUint16(8, files.length, true);
-  ev.setUint16(10, files.length, true);
-  ev.setUint32(12, centralSize, true);
-  ev.setUint32(16, offset, true);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true);
   return concatUint8([...chunks, ...central, end]);
 }
 
 function crc32(data) {
   let crc = -1;
-  for (let i = 0; i < data.length; i += 1) {
-    crc ^= data[i];
-    for (let j = 0; j < 8; j += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
+  for (let i = 0; i < data.length; i++) { crc ^= data[i]; for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); }
   return (crc ^ -1) >>> 0;
 }
 
 function concatUint8(arrays) {
-  const total = arrays.reduce((sum, item) => sum + item.length, 0);
+  const total = arrays.reduce((s, a) => s + a.length, 0);
   const out = new Uint8Array(total);
   let offset = 0;
-  arrays.forEach((item) => {
-    out.set(item, offset);
-    offset += item.length;
-  });
+  arrays.forEach((a) => { out.set(a, offset); offset += a.length; });
   return out;
 }
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
+  link.href = url; link.download = filename; link.click();
   URL.revokeObjectURL(url);
 }
 
 async function shareApp() {
   const text = `Foodporn: ${state.filtered.length} gefilterte Food-Fotos`;
   if (navigator.share) await navigator.share({ title: "Foodporn", text, url: location.href });
-  else {
-    await navigator.clipboard.writeText(location.href);
-    alert("Link wurde in die Zwischenablage kopiert.");
-  }
+  else { await navigator.clipboard.writeText(location.href); alert("Link wurde in die Zwischenablage kopiert."); }
 }
 
-function safeFileName(name) {
-  return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-");
-}
+function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-"); }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+  return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
 }
