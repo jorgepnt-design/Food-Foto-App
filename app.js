@@ -432,7 +432,10 @@ async function syncFromCloud(options = {}) {
 
 async function wakeUpRender(endpoint) {
   try {
-    await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    clearTimeout(timer);
   } catch { /* ignorieren */ }
 }
 
@@ -735,8 +738,10 @@ function renderGallery() {
   $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
   state.filtered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
-    node.querySelector("img").src = getDisplayImageUrl(photo);
-    node.querySelector("img").alt = photo.description || photo.name;
+    const imgEl = node.querySelector("img");
+    imgEl.src = getDisplayImageUrl(photo);
+    imgEl.alt = photo.description || photo.name;
+    imgEl.onerror = () => { if (photo.cloudUrl && imgEl.src !== photo.cloudUrl) imgEl.src = photo.cloudUrl; };
     node.querySelector("h3").textContent = photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
