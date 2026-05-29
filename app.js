@@ -249,6 +249,7 @@ function bindEvents() {
   $("#cloud-test").addEventListener("click", testCloudConnection);
   $("#cloud-sync").addEventListener("click", () => syncFromCloud());
   updateCloudStatus();
+  bindLightboxEvents();
 }
 
 function applyLanguage() {
@@ -739,7 +740,7 @@ function renderGallery() {
     node.querySelector("h3").textContent = photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
-    node.querySelector(".photo-open").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".photo-open").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
       await savePhoto(photo);
@@ -761,10 +762,11 @@ function formatDate(iso) {
 }
 
 function getDisplayImageUrl(photo) {
-  if (!photo.dataUrl) return "";
-  if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
-  const sep = photo.dataUrl.includes("?") ? "&" : "?";
-  return `${photo.dataUrl}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
+  const url = photo.dataUrl || photo.cloudUrl || "";
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
 }
 
 // ─── Detail Panel ────────────────────────────────────────────────
@@ -1020,6 +1022,54 @@ async function shareApp() {
 }
 
 function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-"); }
+
+// ─── Lightbox ─────────────────────────────────────────────────
+
+let lightboxIndex = 0;
+
+function openLightbox(id) {
+  const idx = state.filtered.findIndex((p) => p.id === id);
+  if (idx === -1) return;
+  lightboxIndex = idx;
+  renderLightbox();
+  $("#lightbox").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeLightbox() {
+  $("#lightbox").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+function lightboxNav(dir) {
+  lightboxIndex = (lightboxIndex + dir + state.filtered.length) % state.filtered.length;
+  renderLightbox();
+}
+
+function renderLightbox() {
+  const photo = state.filtered[lightboxIndex];
+  if (!photo) return;
+  const img = $("#lightbox-img");
+  img.src = getDisplayImageUrl(photo);
+  img.alt = photo.description || photo.name;
+  $("#lightbox-caption").textContent = `${photo.category} · ${formatDate(photo.takenAt)} · ${lightboxIndex + 1} / ${state.filtered.length}`;
+  $("#lightbox-prev").style.display = state.filtered.length > 1 ? "" : "none";
+  $("#lightbox-next").style.display = state.filtered.length > 1 ? "" : "none";
+  $("#lightbox-detail").onclick = () => { closeLightbox(); openDetail(photo.id); };
+}
+
+function bindLightboxEvents() {
+  $("#lightbox-close").addEventListener("click", closeLightbox);
+  $("#lightbox-prev").addEventListener("click", () => lightboxNav(-1));
+  $("#lightbox-next").addEventListener("click", () => lightboxNav(1));
+  $("#lightbox").addEventListener("click", (e) => { if (e.target === $("#lightbox") || e.target === $("#lightbox-img-wrap")) closeLightbox(); });
+  document.addEventListener("keydown", (e) => {
+    if ($("#lightbox").classList.contains("hidden")) return;
+    if (e.key === "Escape") closeLightbox();
+    if (e.key === "ArrowLeft") lightboxNav(-1);
+    if (e.key === "ArrowRight") lightboxNav(1);
+  });
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));

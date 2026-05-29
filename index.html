@@ -197,6 +197,17 @@
     </article>
   </template>
 
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
+    <button id="lightbox-close" class="lightbox-close" title="Schließen">✕</button>
+    <button id="lightbox-prev" class="lightbox-nav lightbox-prev" title="Zurück">‹</button>
+    <div class="lightbox-img-wrap">
+      <img id="lightbox-img" src="" alt="" />
+    </div>
+    <button id="lightbox-next" class="lightbox-nav lightbox-next" title="Weiter">›</button>
+    <div id="lightbox-caption" class="lightbox-caption"></div>
+    <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
+  </div>
+
   <script src="app.js?v=foodporn-20260528-9" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     window.addEventListener("error", function (event) {
