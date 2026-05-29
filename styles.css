@@ -99,7 +99,7 @@ button { cursor: pointer; }
 .view.active { display: block; }
 .filter-bar {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr)) auto;
+  grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(120px, 1fr)) minmax(110px, auto);
   gap: 12px;
   align-items: end;
   background: var(--surface);
