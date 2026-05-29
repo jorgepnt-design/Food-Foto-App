@@ -258,8 +258,8 @@ function bindEvents() {
     updateCloudStatus();
   });
   $("#cloud-test").addEventListener("click", testCloudConnection);
-  $("#cloud-sync").addEventListener("click", () => syncFromCloud());
-  $("#sync-button").addEventListener("click", () => syncFromCloud());
+  $("#cloud-sync").addEventListener("click", () => syncWithFeedback());
+  $("#sync-button").addEventListener("click", () => syncWithFeedback());
   $("#refresh-button").addEventListener("click", async () => {
     state.photos = await getAllPhotos();
     render();
@@ -372,6 +372,29 @@ async function autoSyncFromCloud() {
   const endpoint = getApiEndpoint();
   if (!endpoint) return;
   try { await syncFromCloud({ silent: true }); } catch { /* ignorieren beim Start */ }
+}
+
+// Sync mit automatischem Retry — Render schläft oft beim ersten Versuch ein
+async function syncWithFeedback() {
+  const btn1 = $("#sync-button");
+  const btn2 = $("#cloud-sync");
+  if (btn1) btn1.disabled = true;
+  if (btn2) btn2.disabled = true;
+  try {
+    await syncFromCloud();
+  } catch {
+    // erster Versuch fehlgeschlagen — 12s warten und nochmal
+    setCloudStatus("⏳ Erster Versuch fehlgeschlagen, versuche erneut...", "#e67e22");
+    await new Promise((r) => setTimeout(r, 12000));
+    try {
+      await syncFromCloud();
+    } catch (error) {
+      setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
+    }
+  } finally {
+    if (btn1) btn1.disabled = false;
+    if (btn2) btn2.disabled = false;
+  }
 }
 
 async function syncFromCloud(options = {}) {
@@ -1141,4 +1164,3 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape") closeLightbox();
   });
 });
-
