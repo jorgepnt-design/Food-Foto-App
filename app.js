@@ -1,6 +1,6 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
-const DEFAULT_API_ENDPOINT = "https://food-foto-app.onrender.com";
+const DEFAULT_API_ENDPOINT = "https://food-foto-app-api.onrender.com";
 const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
 
 const translations = {
@@ -66,8 +66,6 @@ const state = {
   quick: "all",
   lang: safeGet("foodporn-lang") || safeGet("mealvault-lang") || "de",
   selectedId: null,
-  sortField: "date",
-  sortDir: "desc",
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
@@ -96,7 +94,6 @@ async function init() {
     state.photos = await getAllPhotos();
     render();
     autoSyncFromCloud();
-    checkPendingShare();
   } catch (error) {
     showStartupError(error);
     state.photos = [];
@@ -206,12 +203,6 @@ function bindEvents() {
   }));
   ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
   $("#clear-filters").addEventListener("click", clearFilters);
-  $("#sort-field").addEventListener("change", () => { state.sortField = $("#sort-field").value; render(); });
-  $("#sort-dir").addEventListener("click", () => {
-    state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
-    $("#sort-dir").textContent = state.sortDir === "desc" ? "↓ Neu" : "↑ Alt";
-    render();
-  });
   $$("[data-go-upload]").forEach((btn) => btn.addEventListener("click", () => switchView("upload")));
   $$(".density").forEach((btn) => btn.addEventListener("click", () => {
     $$(".density").forEach((item) => item.classList.toggle("active", item === btn));
@@ -244,23 +235,6 @@ function bindEvents() {
   $("#export-button").addEventListener("click", exportZip);
   $("#metadata-export").addEventListener("click", exportMetadata);
   $("#share-button").addEventListener("click", shareApp);
-  $("#refresh-button").addEventListener("click", async () => {
-    const btn = $("#refresh-button");
-    btn.disabled = true;
-    btn.textContent = "↻ …";
-    state.photos = await getAllPhotos();
-    render();
-    btn.disabled = false;
-    btn.textContent = "↻ Aktualisieren";
-  });
-  $("#sync-button").addEventListener("click", async () => {
-    const btn = $("#sync-button");
-    btn.disabled = true;
-    btn.textContent = "☁ …";
-    await syncFromCloud();
-    btn.disabled = false;
-    btn.textContent = "☁ Synchronisieren";
-  });
   $("#tutorial-button").addEventListener("click", () => $("#tutorial-modal").classList.remove("hidden"));
   $("#close-tutorial").addEventListener("click", () => $("#tutorial-modal").classList.add("hidden"));
   $("#language-toggle").addEventListener("click", () => {
@@ -269,13 +243,18 @@ function bindEvents() {
     applyLanguage();
   });
   $("#cloud-provider").value = safeGet("foodporn-cloud-provider") || safeGet("mealvault-cloud-provider") || "Google Cloud Storage";
-  $("#api-endpoint").value = DEFAULT_API_ENDPOINT;
-  $("#api-endpoint").readOnly = true;
+  $("#api-endpoint").value = getApiEndpoint();
+  persistApiEndpoint($("#api-endpoint").value);
   $("#cloud-provider").addEventListener("change", () => safeSet("foodporn-cloud-provider", $("#cloud-provider").value));
+  $("#api-endpoint").addEventListener("input", () => { persistApiEndpoint($("#api-endpoint").value); updateCloudStatus(); });
+  $("#api-endpoint").addEventListener("blur", () => {
+    $("#api-endpoint").value = getApiEndpoint();
+    persistApiEndpoint($("#api-endpoint").value);
+    updateCloudStatus();
+  });
   $("#cloud-test").addEventListener("click", testCloudConnection);
   $("#cloud-sync").addEventListener("click", () => syncFromCloud());
   updateCloudStatus();
-  bindLightboxEvents();
 }
 
 function applyLanguage() {
@@ -306,7 +285,7 @@ function clearFilters() {
 // ─── Cloud Utilities ──────────────────────────────────────────────
 
 function getApiEndpoint() {
-  return DEFAULT_API_ENDPOINT;
+  return ($("#api-endpoint").value || safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint") || DEFAULT_API_ENDPOINT).trim().replace(/\/$/, "");
 }
 
 function persistApiEndpoint(value) {
@@ -332,30 +311,20 @@ function updateCloudStatus() {
   }
 }
 
-// Weckt den Render-Server auf und wartet bis er antwortet (max 90s)
 async function ensureServerAwake(endpoint) {
-  const maxWait = 90000;
-  const requestTimeout = 8000;
-  const retryDelay = 3000;
+  const maxWait = 55000;
+  const interval = 3000;
   const start = Date.now();
-  setCloudStatus("⏳ Render-Server wird gestartet (kann bis zu 90s dauern)...", "#e67e22");
+  setCloudStatus("⏳ Render-Server wird gestartet (kann bis zu 60s dauern)...", "#e67e22");
   while (Date.now() - start < maxWait) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), requestTimeout);
+      const timer = setTimeout(() => controller.abort(), interval);
       const res = await fetch(`${endpoint}/health`, { cache: "no-store", signal: controller.signal });
       clearTimeout(timer);
-      if (res.ok) {
-        setCloudStatus("✓ Server bereit.", "#27ae60");
-        return true;
-      }
-    } catch {
-      // noch nicht bereit, weiter warten
-    }
-    const elapsed = Math.round((Date.now() - start) / 1000);
-    const remaining = Math.round((maxWait - (Date.now() - start)) / 1000);
-    if (remaining > 0) setCloudStatus(`⏳ Warte auf Server... (${elapsed}s / max 90s)`, "#e67e22");
-    await new Promise((r) => setTimeout(r, retryDelay));
+      if (res.ok) { setCloudStatus("✓ Server bereit.", "#27ae60"); return true; }
+    } catch { /* noch nicht bereit */ }
+    await new Promise((r) => setTimeout(r, interval));
   }
   return false;
 }
@@ -371,10 +340,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
       throw new Error(`HTTP ${res.status}: ${body || res.statusText}`);
     }
     return res;
-  } catch (error) {
-    clearTimeout(timer);
-    throw error;
-  }
+  } catch (error) { clearTimeout(timer); throw error; }
 }
 
 async function testCloudConnection() {
@@ -400,83 +366,44 @@ async function autoSyncFromCloud() {
 
 async function syncFromCloud(options = {}) {
   const endpoint = getApiEndpoint();
-  if (!endpoint) {
-    if (!options.silent) alert("Bitte zuerst den API-Endpunkt eintragen.");
-    return;
-  }
-
-  // Schritt 1: Server wecken
+  if (!endpoint) { if (!options.silent) alert("Bitte zuerst den API-Endpunkt eintragen."); return; }
   const awake = await ensureServerAwake(endpoint);
   if (!awake) {
     if (!options.silent) setCloudStatus("✗ Server antwortet nicht. Bitte später erneut versuchen.", "#c0392b");
     return;
   }
-
-  // Schritt 2: Ausstehende Metadaten zuerst in Cloud schreiben
-  setCloudStatus("☁ Metadaten aktualisieren...", "#e67e22");
-  await flushPendingMetadata();
-
-  // Schritt 3: Fotos und User-Edits laden
   setCloudStatus("☁ Lade Fotos aus der Cloud...", "#e67e22");
-  let cloudPhotos, userEdits = {};
+  let cloudPhotos;
   try {
-    const [photosRes, editsRes] = await Promise.all([
-      fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" }, 30000),
-      fetchWithTimeout(`${endpoint}/api/user-edits`, { cache: "no-store" }, 15000).catch(() => null)
-    ]);
-    cloudPhotos = await photosRes.json();
-    if (editsRes) userEdits = await editsRes.json();
+    const res = await fetchWithTimeout(`${endpoint}/api/photos`, { cache: "no-store" }, 30000);
+    cloudPhotos = await res.json();
   } catch (error) {
     setCloudStatus(`✗ Sync fehlgeschlagen: ${error.message}`, "#c0392b");
     return;
   }
-
-  // Schritt 4: In Cloud gelöschte Fotos lokal entfernen
-  const cloudObjects = new Set((cloudPhotos.photos || []).map((p) => p.cloudObject).filter(Boolean));
-  const toDelete = state.photos.filter((p) => p.cloudObject && !cloudObjects.has(p.cloudObject));
-  for (const p of toDelete) {
-    await removePhoto(p.id);
-    state.photos = state.photos.filter((x) => x.id !== p.id);
-  }
-
-  // Schritt 5: Neue und aktualisierte Fotos mergen
   let imported = 0;
-  for (const cloudPhoto of cloudPhotos.photos || []) {
-    const existing = state.photos.find((p) => p.cloudObject === cloudPhoto.cloudObject || p.id === cloudPhoto.id);
-    const photoId = cloudPhoto.id || crypto.randomUUID();
-    const ue = userEdits[photoId] || {};
+  for (const cp of cloudPhotos.photos || []) {
+    const existing = state.photos.find((p) => p.cloudObject === cp.cloudObject || p.id === cp.id);
     const merged = {
-      id: photoId,
-      name: cloudPhoto.name || getCloudObjectFileName(cloudPhoto.cloudObject) || "cloud-photo.jpg",
-      type: cloudPhoto.type || "image/jpeg",
-      dataUrl: cloudPhoto.cloudUrl,
-      takenAt: cloudPhoto.takenAt || cloudPhoto.createdAt || new Date().toISOString(),
-      camera: cloudPhoto.camera || "Unbekannt",
-      category: ue.category || cloudPhoto.category || "Sonstiges",
-      tags: ue.tags ? (Array.isArray(ue.tags) ? ue.tags : parseTags(ue.tags)) : (Array.isArray(cloudPhoto.tags) ? cloudPhoto.tags : parseTags(cloudPhoto.tags)),
-      title: ue.title !== undefined ? ue.title : (cloudPhoto.title || ""),
-      description: ue.description !== undefined ? ue.description : (cloudPhoto.description || ""),
-      favorite: ue.favorite !== undefined ? (ue.favorite === true || ue.favorite === "true") : (cloudPhoto.favorite === true || cloudPhoto.favorite === "true"),
-      createdAt: cloudPhoto.createdAt || new Date().toISOString(),
+      id: cp.id || crypto.randomUUID(),
+      name: cp.name || getCloudObjectFileName(cp.cloudObject) || "cloud-photo.jpg",
+      type: cp.type || "image/jpeg",
+      dataUrl: cp.cloudUrl,
+      takenAt: cp.takenAt || cp.createdAt || new Date().toISOString(),
+      camera: cp.camera || "Unbekannt",
+      category: cp.category || "Sonstiges",
+      tags: Array.isArray(cp.tags) ? cp.tags : parseTags(cp.tags),
+      description: cp.description || "",
+      favorite: cp.favorite === true || cp.favorite === "true",
+      createdAt: cp.createdAt || new Date().toISOString(),
       storage: "gcs",
-      cloudObject: cloudPhoto.cloudObject,
-      cloudUrl: cloudPhoto.cloudUrl,
-      editedAt: ue.editedAt || cloudPhoto.editedAt || cloudPhoto.updatedAt || cloudPhoto.createdAt
+      cloudObject: cp.cloudObject,
+      cloudUrl: cp.cloudUrl,
+      editedAt: cp.editedAt || cp.updatedAt || cp.createdAt
     };
-    if (existing) {
-      const localNewer = existing.editedAt && merged.editedAt && new Date(existing.editedAt) > new Date(merged.editedAt);
-      if (localNewer) {
-        // Lokale Metadaten sind neuer — nur Cloud-URLs aktualisieren
-        existing.dataUrl = merged.dataUrl;
-        existing.cloudUrl = merged.cloudUrl;
-        existing.cloudObject = merged.cloudObject;
-      } else {
-        Object.assign(existing, merged);
-      }
-      await savePhoto(existing);
-    } else { await savePhoto(merged); state.photos.push(merged); imported++; }
+    if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
+    else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
-
   state.photos = await getAllPhotos();
   render();
   if (!options.silent) switchView("gallery");
@@ -486,12 +413,7 @@ async function syncFromCloud(options = {}) {
 // ─── Upload ───────────────────────────────────────────────────────
 
 async function wakeUpRender(endpoint) {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: ctrl.signal });
-    clearTimeout(timer);
-  } catch { /* ignorieren */ }
+  try { await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) }); } catch { /* ignorieren */ }
 }
 
 function setUploadItemStatus(item, text, isError = false) {
@@ -511,33 +433,13 @@ async function handleFiles(fileList) {
     uploadList.prepend(item);
     return;
   }
-
   const endpoint = getApiEndpoint();
   if (endpoint) wakeUpRender(endpoint);
-
-  const total = files.length;
-  let done = 0;
-  const progressBox = $("#upload-progress");
-  const progressFill = $("#upload-progress-fill");
-  const progressText = $("#upload-progress-text");
-  const progressPct = $("#upload-progress-pct");
-
-  function updateProgress() {
-    const pct = Math.round((done / total) * 100);
-    progressFill.style.width = `${pct}%`;
-    progressText.textContent = `${done} / ${total} Foto${total === 1 ? "" : "s"}`;
-    progressPct.textContent = `${pct}%`;
-  }
-
-  progressBox.classList.remove("hidden");
-  updateProgress();
-
   for (const file of files) {
     const item = document.createElement("div");
     item.className = "upload-item";
     item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Import...</strong>`;
     uploadList.prepend(item);
-
     let dataUrl, buffer;
     try {
       [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
@@ -545,53 +447,29 @@ async function handleFiles(fileList) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
     }
-
     const exif = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
     const photo = {
-      id: crypto.randomUUID(),
-      name: file.name,
-      type: normalizeImageType(file.type),
-      dataUrl,
-      takenAt: created,
+      id: crypto.randomUUID(), name: file.name, type: normalizeImageType(file.type),
+      dataUrl, takenAt: created,
       camera: [exif.make, exif.model].filter(Boolean).join(" ") || "Unbekannt",
-      category: suggestCategory(created),
-      tags: suggestTags(file.name),
-      description: "",
-      favorite: false,
-      createdAt: new Date().toISOString(),
-      storage: "local"
+      category: suggestCategory(created), tags: suggestTags(file.name),
+      description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local"
     };
-
     if (endpoint) {
       setUploadItemStatus(item, "Cloud-Upload...");
       try {
         const cloud = await uploadPhotoToCloud(file, photo);
-        if (cloud) {
-          photo.storage = "gcs";
-          photo.cloudObject = cloud.objectName;
-          photo.cloudUrl = cloud.url;
-          delete photo.cloudError;
-        }
+        if (cloud) { photo.storage = "gcs"; photo.cloudObject = cloud.objectName; photo.cloudUrl = cloud.url; delete photo.cloudError; }
       } catch (error) {
-        photo.storage = "local";
-        photo.cloudError = error.message;
+        photo.storage = "local"; photo.cloudError = error.message;
         setUploadItemStatus(item, "Cloud fehlgeschlagen — lokal gespeichert", true);
         item.title = `Cloud-Fehler: ${error.message}`;
         console.error("[Cloud-Upload]", file.name, error);
       }
     }
-
     await savePhotoBestEffort(photo, item);
-    done++;
-    updateProgress();
   }
-
-  progressText.textContent = `✓ ${total} Foto${total === 1 ? "" : "s"} hochgeladen`;
-  progressPct.textContent = "Fertig";
-  progressFill.style.background = "#27ae60";
-  setTimeout(() => progressBox.classList.add("hidden"), 3000);
-
   render();
   switchView("gallery");
 }
@@ -607,7 +485,6 @@ async function savePhotoBestEffort(photo, item) {
     }
     return;
   } catch (error) { photo.localSaveWarning = error.message; }
-
   try {
     photo.dataUrl = await resizeDataUrl(photo.dataUrl, 900, photo.type || "image/jpeg", 0.7);
     await savePhoto(photo);
@@ -667,8 +544,7 @@ function parseTags(value) {
 
 function getCloudObjectFileName(objectName) {
   if (!objectName) return "";
-  const parts = String(objectName).split("/");
-  return parts[parts.length - 1];
+  return String(objectName).split("/").pop();
 }
 
 function readAsDataUrl(file) {
@@ -708,6 +584,28 @@ function readAsArrayBuffer(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── Lädt ein Bild als data:URL — auch von externen HTTPS-URLs ────
+// Nötig weil canvas.toDataURL() bei Cross-Origin-Bildern SecurityError wirft.
+function loadImageAsDataUrl(src) {
+  return new Promise((resolve, reject) => {
+    // Wenn bereits data: URL → direkt zurückgeben
+    if (src.startsWith("data:")) { resolve(src); return; }
+    // Externe URL → über fetch als Blob laden, dann als data: URL lesen
+    fetch(src)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      })
+      .catch(reject);
   });
 }
 
@@ -795,7 +693,7 @@ function filterPhotos() {
   const category = $("#category-filter").value;
   const tag = $("#tag-filter").value.trim().toLowerCase();
   const now = new Date();
-  const results = state.photos.filter((photo) => {
+  return state.photos.filter((photo) => {
     const date = new Date(photo.takenAt);
     const haystack = [photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
     if (state.quick === "favorites" && !photo.favorite) return false;
@@ -808,19 +706,6 @@ function filterPhotos() {
     if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
     return true;
   });
-
-  const dir = state.sortDir === "asc" ? 1 : -1;
-  results.sort((a, b) => {
-    switch (state.sortField) {
-      case "date":     return dir * (new Date(a.takenAt) - new Date(b.takenAt));
-      case "year":     return dir * (new Date(a.takenAt).getFullYear() - new Date(b.takenAt).getFullYear());
-      case "uploaded": return dir * (new Date(a.createdAt) - new Date(b.createdAt));
-      case "name":  return dir * a.name.localeCompare(b.name);
-      case "category": return dir * (a.category || "").localeCompare(b.category || "");
-      default:      return 0;
-    }
-  });
-  return results;
 }
 
 function renderGallery() {
@@ -830,17 +715,12 @@ function renderGallery() {
   $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
   state.filtered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
-    const imgEl = node.querySelector("img");
-    imgEl.src = getDisplayImageUrl(photo);
-    imgEl.alt = photo.description || photo.name;
-    imgEl.onerror = () => { if (photo.cloudUrl && imgEl.src !== photo.cloudUrl) imgEl.src = photo.cloudUrl; };
-    node.querySelector(".card-title").textContent = photo.title || photo.category;
-    node.querySelector(".card-sub").textContent = photo.title ? `${photo.category} · ${formatDate(photo.takenAt)}` : formatDate(photo.takenAt);
+    node.querySelector("img").src = getDisplayImageUrl(photo);
+    node.querySelector("img").alt = photo.description || photo.name;
+    node.querySelector("h3").textContent = photo.category;
+    node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
-    node.querySelector(".photo-open").addEventListener("click", () => openLightbox(photo.id));
-    node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
-    node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
-    node.querySelector(".card-delete").addEventListener("click", () => deletePhoto(photo.id));
+    node.querySelector(".photo-open").addEventListener("click", () => openDetail(photo.id));
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
       await savePhoto(photo);
@@ -862,13 +742,10 @@ function formatDate(iso) {
 }
 
 function getDisplayImageUrl(photo) {
-  const url = photo.dataUrl || photo.cloudUrl || "";
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-  // Signierte GCS/S3-URLs dürfen keine extra Parameter bekommen (Signatur wird sonst ungültig)
-  if (url.includes("X-Goog-") || url.includes("X-Amz-")) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
+  if (!photo.dataUrl) return "";
+  if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
+  const sep = photo.dataUrl.includes("?") ? "&" : "?";
+  return `${photo.dataUrl}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
 }
 
 // ─── Detail Panel ────────────────────────────────────────────────
@@ -878,7 +755,6 @@ function openDetail(id) {
   if (!photo) return;
   state.selectedId = id;
   resetEditState();
-  $("#detail-title").value = photo.title || "";
   $("#detail-description").value = photo.description || "";
   $("#detail-category").value = photo.category;
   $("#detail-tags").value = (photo.tags || []).join(", ");
@@ -906,17 +782,14 @@ async function saveDetails(event) {
   event.preventDefault();
   const photo = getSelected();
   if (!photo) return;
-  photo.title = $("#detail-title").value.trim();
   photo.description = $("#detail-description").value.trim();
   photo.category = $("#detail-category").value;
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
   photo.takenAt = new Date($("#detail-date").value).toISOString();
-  photo.editedAt = new Date().toISOString();
   await savePhoto(photo);
   state.photos = await getAllPhotos();
   render();
   closeDetail();
-  if (photo.cloudObject) pushMetadataToCloud(photo);
 }
 
 function getSelected() { return state.photos.find((p) => p.id === state.selectedId); }
@@ -930,39 +803,19 @@ async function toggleSelectedFavorite() {
   render();
 }
 
-async function deletePhoto(id) {
-  const photo = state.photos.find((p) => p.id === id);
-  if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
-  await deletePhotoById(photo);
-}
-
 async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
-  await deletePhotoById(photo);
-  closeDetail();
-}
-
-async function deletePhotoById(photo) {
-  if (photo.cloudObject) {
-    try {
-      const url = `${DEFAULT_API_ENDPOINT}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`;
-      await fetchWithTimeout(url, { method: "DELETE" }, 60000);
-    } catch (error) {
-      console.error("[Cloud-Delete]", error);
-      alert("Cloud-Löschen fehlgeschlagen – Bild wird beim nächsten Sync wieder erscheinen.\n" + error.message);
-    }
-  }
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
   render();
+  closeDetail();
 }
 
 // ─── Image Editing ───────────────────────────────────────────────
 
 function editImage(changes) { Object.assign(state.edit, changes); drawSelectedImage(); }
 function resetEdit() { resetEditState(); drawSelectedImage(); }
-
 
 function resetEditState() {
   state.edit = { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 };
@@ -971,56 +824,61 @@ function resetEditState() {
   $("#saturation-range").value = "100";
 }
 
-async function getPhotoDataUrl(photo) {
-  const raw = photo.dataUrl || photo.cloudUrl || "";
-  if (!raw) return "";
-  if (raw.startsWith("data:")) return raw;
-  // GCS-URL → als Blob laden, lokal cachen damit Canvas nicht tainted wird
-  const resp = await fetch(raw);
-  const blob = await resp.blob();
-  const dataUrl = await new Promise((res) => {
-    const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob);
-  });
-  photo.dataUrl = dataUrl;
-  await savePhoto(photo);
-  return dataUrl;
-}
-
+// Zeichnet das Bild auf den Canvas — lädt externe URLs zuerst als data: URL
+// um den CORS-SecurityError bei canvas.toDataURL() zu vermeiden.
 async function drawSelectedImage() {
   const photo = getSelected();
   if (!photo) return;
-  let imgSrc;
-  try {
-    imgSrc = await getPhotoDataUrl(photo);
-  } catch (e) {
-    console.warn("[drawSelectedImage fetch]", e);
-    imgSrc = photo.dataUrl || photo.cloudUrl || "";
+
+  let src = photo.dataUrl;
+
+  // Cloud-Foto: noch keine lokale data: URL → extern laden
+  if (!src || !src.startsWith("data:")) {
+    const canvas = $("#edit-canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = 300; canvas.height = 200;
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, 300, 200);
+    ctx.fillStyle = "#666";
+    ctx.textAlign = "center";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("Bild wird geladen...", 150, 105);
+
+    try {
+      src = await loadImageAsDataUrl(photo.cloudUrl || photo.dataUrl);
+      // data: URL lokal speichern damit nächstes Öffnen sofort klappt
+      photo.dataUrl = src;
+      await savePhoto(photo);
+    } catch (error) {
+      ctx.fillStyle = "#c0392b";
+      ctx.fillText(`Ladefehler: ${error.message}`, 150, 105);
+      console.error("[drawSelectedImage] Bild laden fehlgeschlagen:", error);
+      return;
+    }
   }
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = $("#edit-canvas");
-      const ctx = canvas.getContext("2d");
-      const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
-      const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
-      const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
-      const sw = sourceSize || img.width;
-      const sh = sourceSize || img.height;
-      const rotated = Math.abs(state.edit.rotation % 180) === 90;
-      canvas.width = rotated ? sh : sw;
-      canvas.height = rotated ? sw : sh;
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((state.edit.rotation * Math.PI) / 180);
-      ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
-      ctx.filter = buildCanvasFilter();
-      ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
-      ctx.restore();
-      resolve();
-    };
-    img.onerror = () => resolve();
-    img.src = imgSrc;
-  });
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = $("#edit-canvas");
+    const ctx = canvas.getContext("2d");
+    const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
+    const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
+    const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
+    const sw = sourceSize || img.width;
+    const sh = sourceSize || img.height;
+    const rotated = Math.abs(state.edit.rotation % 180) === 90;
+    canvas.width = rotated ? sh : sw;
+    canvas.height = rotated ? sw : sh;
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((state.edit.rotation * Math.PI) / 180);
+    ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
+    ctx.filter = buildCanvasFilter();
+    ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+    ctx.restore();
+  };
+  img.onerror = () => console.error("[drawSelectedImage] img.onload fehlgeschlagen");
+  img.src = src;
 }
 
 function buildCanvasFilter() {
@@ -1033,10 +891,48 @@ function buildCanvasFilter() {
 async function saveEditedImage() {
   const photo = getSelected();
   if (!photo) return;
-  await drawSelectedImage(); // sicherstellen dass Canvas aktuell ist
+
+  // Sicherstellen dass photo.dataUrl eine data: URL ist (nicht eine Cloud-URL)
+  if (!photo.dataUrl || !photo.dataUrl.startsWith("data:")) {
+    try {
+      photo.dataUrl = await loadImageAsDataUrl(photo.cloudUrl || photo.dataUrl);
+    } catch (error) {
+      alert(`Bild konnte nicht geladen werden: ${error.message}`);
+      return;
+    }
+  }
+
   const canvas = $("#edit-canvas");
+
+  // Canvas neu zeichnen mit aktueller data: URL
+  await new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
+      const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
+      const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
+      const sw = sourceSize || img.width;
+      const sh = sourceSize || img.height;
+      const rotated = Math.abs(state.edit.rotation % 180) === 90;
+      canvas.width = rotated ? sh : sw;
+      canvas.height = rotated ? sw : sh;
+      const ctx = canvas.getContext("2d");
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((state.edit.rotation * Math.PI) / 180);
+      ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
+      ctx.filter = buildCanvasFilter();
+      ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+      ctx.restore();
+      resolve();
+    };
+    img.onerror = resolve;
+    img.src = photo.dataUrl;
+  });
+
   photo.dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
   photo.editedAt = new Date().toISOString();
+
   if (getApiEndpoint()) {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, photo.type || "image/jpeg", 0.92));
     try {
@@ -1047,6 +943,7 @@ async function saveEditedImage() {
       console.error("[Cloud-Upload bearbeitetes Bild]", error);
     }
   }
+
   await savePhoto(photo);
   state.photos = await getAllPhotos();
   resetEditState();
@@ -1175,143 +1072,6 @@ async function shareApp() {
 }
 
 function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-"); }
-
-// ─── Cloud Metadata Push ──────────────────────────────────────
-
-async function pushMetadataToCloud(photo) {
-  const edits = { title: photo.title || "", description: photo.description || "", category: photo.category, tags: photo.tags, favorite: photo.favorite, editedAt: photo.editedAt };
-  try {
-    await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/user-edits`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: photo.id, edits })
-    }, 15000);
-    removePendingMetadata(photo.id);
-  } catch (e) {
-    console.warn("[Meta-Update fehlgeschlagen, wird beim Sync nachgeholt]", e);
-    savePendingMetadata(photo);
-  }
-}
-
-function savePendingMetadata(photo) {
-  try {
-    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
-    pending[photo.id] = withoutDataUrl(photo);
-    safeSet("foodporn-pending-meta", JSON.stringify(pending));
-  } catch {}
-}
-
-function removePendingMetadata(id) {
-  try {
-    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
-    delete pending[id];
-    safeSet("foodporn-pending-meta", JSON.stringify(pending));
-  } catch {}
-}
-
-async function flushPendingMetadata() {
-  try {
-    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
-    const entries = Object.values(pending);
-    if (!entries.length) return;
-    for (const meta of entries) {
-      if (!meta.id) continue;
-      try {
-        const edits = { title: meta.title || "", description: meta.description || "", category: meta.category, tags: meta.tags, favorite: meta.favorite, editedAt: meta.editedAt };
-        await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/user-edits`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: meta.id, edits })
-        }, 15000);
-        removePendingMetadata(meta.id);
-      } catch {}
-    }
-  } catch {}
-}
-
-// ─── Share Target ─────────────────────────────────────────────
-
-async function checkPendingShare() {
-  if (!("caches" in window)) return;
-  try {
-    const cache = await caches.open("foodporn-share-v1");
-    const manifestRes = await cache.match("/Food-Foto-App/pending-share-manifest");
-    if (!manifestRes) return;
-    const fileNames = await manifestRes.json();
-    if (!fileNames.length) return;
-
-    const files = [];
-    for (const name of fileNames) {
-      const res = await cache.match(`/Food-Foto-App/pending-share/${encodeURIComponent(name)}`);
-      if (!res) continue;
-      const buf = await res.arrayBuffer();
-      const type = res.headers.get("Content-Type") || "image/jpeg";
-      files.push(new File([buf], name, { type }));
-    }
-
-    // Cache leeren
-    await cache.delete("/Food-Foto-App/pending-share-manifest");
-    for (const name of fileNames) {
-      await cache.delete(`/Food-Foto-App/pending-share/${encodeURIComponent(name)}`);
-    }
-
-    if (files.length > 0) {
-      switchView("upload");
-      await handleFiles(files);
-    }
-  } catch (e) {
-    console.error("[Share Target]", e);
-  }
-}
-
-// ─── Lightbox ─────────────────────────────────────────────────
-
-let lightboxIndex = 0;
-
-function openLightbox(id) {
-  const idx = state.filtered.findIndex((p) => p.id === id);
-  if (idx === -1) return;
-  lightboxIndex = idx;
-  renderLightbox();
-  $("#lightbox").classList.remove("hidden");
-  document.body.style.overflow = "hidden";
-}
-
-function closeLightbox() {
-  $("#lightbox").classList.add("hidden");
-  document.body.style.overflow = "";
-}
-
-function lightboxNav(dir) {
-  lightboxIndex = (lightboxIndex + dir + state.filtered.length) % state.filtered.length;
-  renderLightbox();
-}
-
-function renderLightbox() {
-  const photo = state.filtered[lightboxIndex];
-  if (!photo) return;
-  const img = $("#lightbox-img");
-  img.src = getDisplayImageUrl(photo);
-  img.alt = photo.description || photo.name;
-  const captionTitle = photo.title ? `${photo.title} · ` : "";
-  $("#lightbox-caption").textContent = `${captionTitle}${photo.category} · ${formatDate(photo.takenAt)} · ${lightboxIndex + 1} / ${state.filtered.length}`;
-  $("#lightbox-prev").style.display = state.filtered.length > 1 ? "" : "none";
-  $("#lightbox-next").style.display = state.filtered.length > 1 ? "" : "none";
-  $("#lightbox-detail").onclick = () => { closeLightbox(); openDetail(photo.id); };
-}
-
-function bindLightboxEvents() {
-  $("#lightbox-close").addEventListener("click", closeLightbox);
-  $("#lightbox-prev").addEventListener("click", () => lightboxNav(-1));
-  $("#lightbox-next").addEventListener("click", () => lightboxNav(1));
-  $("#lightbox").addEventListener("click", (e) => { if (e.target === $("#lightbox") || e.target === $("#lightbox-img-wrap")) closeLightbox(); });
-  document.addEventListener("keydown", (e) => {
-    if ($("#lightbox").classList.contains("hidden")) return;
-    if (e.key === "Escape") closeLightbox();
-    if (e.key === "ArrowLeft") lightboxNav(-1);
-    if (e.key === "ArrowRight") lightboxNav(1);
-  });
-}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
