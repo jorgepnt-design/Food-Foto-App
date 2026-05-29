@@ -1,6 +1,6 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
-const DEFAULT_API_ENDPOINT = "https://food-foto-app-api.onrender.com";
+const DEFAULT_API_ENDPOINT = "https://food-foto-app.onrender.com";
 const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
 
 const translations = {
