@@ -16,12 +16,8 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "*")
   .map(normalizeAllowedOrigin)
   .filter(Boolean);
 
-if (!bucketName) {
-  throw new Error("GCS_BUCKET_NAME is required");
-}
-
-const storage = new Storage(getStorageOptions());
-const bucket = storage.bucket(bucketName);
+const storage = bucketName ? new Storage(getStorageOptions()) : null;
+const bucket = bucketName ? storage.bucket(bucketName) : null;
 
 app.use((req, res, next) => {
   const origin = normalizeAllowedOrigin(req.headers.origin);
@@ -50,13 +46,15 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     storage: "google-cloud-storage",
-    bucket: bucketName,
+    bucket: bucketName || null,
+    configured: Boolean(bucketName),
     projectId: process.env.GCP_PROJECT_ID || null,
     hasCredentials: Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)
   });
 });
 
 app.get("/api/debug/storage", async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
   try {
     const [exists] = await bucket.exists();
     const [files] = exists ? await bucket.getFiles({ prefix: "food-photos/", maxResults: 5 }) : [[]];
@@ -73,6 +71,7 @@ app.get("/api/debug/storage", async (req, res, next) => {
 });
 
 app.post("/api/photos/upload", upload.single("image"), async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
   try {
     if (!req.file) return res.status(400).json({ error: "image file is required" });
     if (!req.file.mimetype.startsWith("image/")) return res.status(415).json({ error: "only image uploads are allowed" });
@@ -104,6 +103,7 @@ app.post("/api/photos/upload", upload.single("image"), async (req, res, next) =>
 });
 
 app.get("/api/photos", async (req, res, next) => {
+  if (!bucket) return res.json({ photos: [] });
   try {
     const [files] = await bucket.getFiles({ prefix: "food-photos/" });
     const photos = await Promise.all(files.map(async (file) => {

@@ -311,16 +311,17 @@ function updateCloudStatus() {
   }
 }
 
-// Weckt den Render-Server auf und wartet bis er antwortet (max 55s)
+// Weckt den Render-Server auf und wartet bis er antwortet (max 90s)
 async function ensureServerAwake(endpoint) {
-  const maxWait = 55000;
-  const interval = 3000;
+  const maxWait = 90000;
+  const requestTimeout = 8000;
+  const retryDelay = 3000;
   const start = Date.now();
-  setCloudStatus("⏳ Render-Server wird gestartet (kann bis zu 60s dauern)...", "#e67e22");
+  setCloudStatus("⏳ Render-Server wird gestartet (kann bis zu 90s dauern)...", "#e67e22");
   while (Date.now() - start < maxWait) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), interval);
+      const timer = setTimeout(() => controller.abort(), requestTimeout);
       const res = await fetch(`${endpoint}/health`, { cache: "no-store", signal: controller.signal });
       clearTimeout(timer);
       if (res.ok) {
@@ -330,7 +331,10 @@ async function ensureServerAwake(endpoint) {
     } catch {
       // noch nicht bereit, weiter warten
     }
-    await new Promise((r) => setTimeout(r, interval));
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    const remaining = Math.round((maxWait - (Date.now() - start)) / 1000);
+    if (remaining > 0) setCloudStatus(`⏳ Warte auf Server... (${elapsed}s / max 90s)`, "#e67e22");
+    await new Promise((r) => setTimeout(r, retryDelay));
   }
   return false;
 }
