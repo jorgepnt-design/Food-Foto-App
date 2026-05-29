@@ -172,6 +172,7 @@
       </div>
     </div>
     <form id="detail-form" class="detail-form">
+      <label><span>Gerichtsname</span><input id="detail-title" type="text" placeholder="z.B. Spaghetti Carbonara" /></label>
       <label><span data-i18n="description">Beschreibung</span><textarea id="detail-description" rows="3"></textarea></label>
       <label><span data-i18n="category">Kategorie</span><select id="detail-category"></select></label>
       <label><span data-i18n="tagsComma">Tags, mit Komma getrennt</span><input id="detail-tags" type="text" /></label>
@@ -204,7 +205,7 @@
   <template id="photo-card-template">
     <article class="photo-card">
       <button class="photo-open" type="button"><img alt="" loading="lazy" /></button>
-      <div class="photo-info"><div><h3></h3><p></p></div><button class="favorite-star" type="button" title="Favorit">☆</button></div>
+      <div class="photo-info"><div><h3 class="card-title"></h3><p class="card-sub"></p></div><button class="favorite-star" type="button" title="Favorit">☆</button></div>
       <div class="tag-row"></div>
       <div class="card-actions">
         <button class="card-btn card-fullscreen" type="button">Vollbild</button>
@@ -225,7 +226,7 @@
     <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260529-3" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260529-4" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })

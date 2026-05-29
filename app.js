@@ -771,8 +771,8 @@ function renderGallery() {
     imgEl.src = getDisplayImageUrl(photo);
     imgEl.alt = photo.description || photo.name;
     imgEl.onerror = () => { if (photo.cloudUrl && imgEl.src !== photo.cloudUrl) imgEl.src = photo.cloudUrl; };
-    node.querySelector("h3").textContent = photo.category;
-    node.querySelector("p").textContent = formatDate(photo.takenAt);
+    node.querySelector(".card-title").textContent = photo.title || photo.category;
+    node.querySelector(".card-sub").textContent = photo.title ? `${photo.category} · ${formatDate(photo.takenAt)}` : formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
     node.querySelector(".photo-open").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
@@ -815,6 +815,7 @@ function openDetail(id) {
   if (!photo) return;
   state.selectedId = id;
   resetEditState();
+  $("#detail-title").value = photo.title || "";
   $("#detail-description").value = photo.description || "";
   $("#detail-category").value = photo.category;
   $("#detail-tags").value = (photo.tags || []).join(", ");
@@ -842,6 +843,7 @@ async function saveDetails(event) {
   event.preventDefault();
   const photo = getSelected();
   if (!photo) return;
+  photo.title = $("#detail-title").value.trim();
   photo.description = $("#detail-description").value.trim();
   photo.category = $("#detail-category").value;
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
@@ -1145,7 +1147,8 @@ function renderLightbox() {
   const img = $("#lightbox-img");
   img.src = getDisplayImageUrl(photo);
   img.alt = photo.description || photo.name;
-  $("#lightbox-caption").textContent = `${photo.category} · ${formatDate(photo.takenAt)} · ${lightboxIndex + 1} / ${state.filtered.length}`;
+  const captionTitle = photo.title ? `${photo.title} · ` : "";
+  $("#lightbox-caption").textContent = `${captionTitle}${photo.category} · ${formatDate(photo.takenAt)} · ${lightboxIndex + 1} / ${state.filtered.length}`;
   $("#lightbox-prev").style.display = state.filtered.length > 1 ? "" : "none";
   $("#lightbox-next").style.display = state.filtered.length > 1 ? "" : "none";
   $("#lightbox-detail").onclick = () => { closeLightbox(); openDetail(photo.id); };
