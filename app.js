@@ -750,8 +750,9 @@ function filterPhotos() {
   const dir = state.sortDir === "asc" ? 1 : -1;
   results.sort((a, b) => {
     switch (state.sortField) {
-      case "date":  return dir * (new Date(a.takenAt) - new Date(b.takenAt));
-      case "year":  return dir * (new Date(a.takenAt).getFullYear() - new Date(b.takenAt).getFullYear());
+      case "date":     return dir * (new Date(a.takenAt) - new Date(b.takenAt));
+      case "year":     return dir * (new Date(a.takenAt).getFullYear() - new Date(b.takenAt).getFullYear());
+      case "uploaded": return dir * (new Date(a.createdAt) - new Date(b.createdAt));
       case "name":  return dir * a.name.localeCompare(b.name);
       case "category": return dir * (a.category || "").localeCompare(b.category || "");
       default:      return 0;
