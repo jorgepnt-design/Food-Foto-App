@@ -715,7 +715,21 @@ function renderGallery() {
   $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
   state.filtered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
-    node.querySelector("img").src = getDisplayImageUrl(photo);
+    const imgEl = node.querySelector("img");
+    const displayUrl = getDisplayImageUrl(photo);
+    if (displayUrl.startsWith("data:")) {
+      imgEl.src = displayUrl;
+    } else if (displayUrl) {
+      // Cloud-URL: über fetch laden um CORS-Blockierung zu umgehen
+      loadImageAsDataUrl(displayUrl)
+        .then((dataUrl) => {
+          imgEl.src = dataUrl;
+          // Lokal cachen damit nächstes Mal sofort angezeigt wird
+          photo.dataUrl = dataUrl;
+          savePhoto(photo).catch(() => {});
+        })
+        .catch(() => { imgEl.alt = photo.name; });
+    }
     node.querySelector("img").alt = photo.description || photo.name;
     node.querySelector("h3").textContent = photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
