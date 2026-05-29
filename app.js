@@ -963,6 +963,7 @@ async function deletePhotoById(photo) {
 function editImage(changes) { Object.assign(state.edit, changes); drawSelectedImage(); }
 function resetEdit() { resetEditState(); drawSelectedImage(); }
 
+
 function resetEditState() {
   state.edit = { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 };
   $("#brightness-range").value = "100";
@@ -970,44 +971,56 @@ function resetEditState() {
   $("#saturation-range").value = "100";
 }
 
+async function getPhotoDataUrl(photo) {
+  const raw = photo.dataUrl || photo.cloudUrl || "";
+  if (!raw) return "";
+  if (raw.startsWith("data:")) return raw;
+  // GCS-URL → als Blob laden, lokal cachen damit Canvas nicht tainted wird
+  const resp = await fetch(raw);
+  const blob = await resp.blob();
+  const dataUrl = await new Promise((res) => {
+    const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob);
+  });
+  photo.dataUrl = dataUrl;
+  await savePhoto(photo);
+  return dataUrl;
+}
+
 async function drawSelectedImage() {
   const photo = getSelected();
   if (!photo) return;
-  const rawUrl = photo.dataUrl || photo.cloudUrl || "";
-  let imgSrc = rawUrl;
-  // GCS-URLs würden Canvas "tainen" → zuerst als Blob laden und lokal cachen
-  if (rawUrl && !rawUrl.startsWith("data:")) {
-    try {
-      const resp = await fetch(rawUrl);
-      const blob = await resp.blob();
-      imgSrc = await new Promise((res) => {
-        const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob);
-      });
-      photo.dataUrl = imgSrc;
-      await savePhoto(photo);
-    } catch (e) { console.warn("[drawSelectedImage]", e); }
+  let imgSrc;
+  try {
+    imgSrc = await getPhotoDataUrl(photo);
+  } catch (e) {
+    console.warn("[drawSelectedImage fetch]", e);
+    imgSrc = photo.dataUrl || photo.cloudUrl || "";
   }
-  const img = new Image();
-  img.onload = () => {
-    const canvas = $("#edit-canvas");
-    const ctx = canvas.getContext("2d");
-    const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
-    const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
-    const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
-    const sw = sourceSize || img.width;
-    const sh = sourceSize || img.height;
-    const rotated = Math.abs(state.edit.rotation % 180) === 90;
-    canvas.width = rotated ? sh : sw;
-    canvas.height = rotated ? sw : sh;
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((state.edit.rotation * Math.PI) / 180);
-    ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
-    ctx.filter = buildCanvasFilter();
-    ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
-    ctx.restore();
-  };
-  img.src = imgSrc;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = $("#edit-canvas");
+      const ctx = canvas.getContext("2d");
+      const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
+      const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
+      const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
+      const sw = sourceSize || img.width;
+      const sh = sourceSize || img.height;
+      const rotated = Math.abs(state.edit.rotation % 180) === 90;
+      canvas.width = rotated ? sh : sw;
+      canvas.height = rotated ? sw : sh;
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((state.edit.rotation * Math.PI) / 180);
+      ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
+      ctx.filter = buildCanvasFilter();
+      ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+      ctx.restore();
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = imgSrc;
+  });
 }
 
 function buildCanvasFilter() {
@@ -1020,6 +1033,7 @@ function buildCanvasFilter() {
 async function saveEditedImage() {
   const photo = getSelected();
   if (!photo) return;
+  await drawSelectedImage(); // sicherstellen dass Canvas aktuell ist
   const canvas = $("#edit-canvas");
   photo.dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
   photo.editedAt = new Date().toISOString();
