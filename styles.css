@@ -122,8 +122,12 @@ input[type="range"] {
   accent-color: var(--primary);
 }
 textarea { resize: vertical; }
-.gallery-meta { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 12px; color: var(--muted); }
+.gallery-meta { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 12px; color: var(--muted); gap: 10px; flex-wrap: wrap; }
 .gallery-meta p { margin: 0; }
+.sort-controls { display: flex; gap: 6px; align-items: center; }
+.sort-controls select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 0.85rem; }
+.sort-dir-btn { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+.sort-dir-btn:hover { background: var(--surface-soft); }
 .density-toggle { display: flex; gap: 6px; }
 .density { width: 38px; height: 34px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .density.active { background: var(--primary); color: white; border-color: var(--primary); }

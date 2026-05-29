@@ -70,6 +70,15 @@
 
         <div class="gallery-meta">
           <p id="result-count">0 Fotos</p>
+          <div class="sort-controls">
+            <select id="sort-field">
+              <option value="date">Datum</option>
+              <option value="year">Jahr</option>
+              <option value="name">Name</option>
+              <option value="category">Kategorie</option>
+            </select>
+            <button id="sort-dir" class="sort-dir-btn" title="Sortierrichtung umkehren">↓ Neu</button>
+          </div>
           <div class="density-toggle" role="group" aria-label="Galeriedichte">
             <button class="density active" data-density="comfortable">▦</button>
             <button class="density" data-density="compact">▥</button>

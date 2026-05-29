@@ -66,6 +66,8 @@ const state = {
   quick: "all",
   lang: safeGet("foodporn-lang") || safeGet("mealvault-lang") || "de",
   selectedId: null,
+  sortField: "date",
+  sortDir: "desc",
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
@@ -204,6 +206,12 @@ function bindEvents() {
   }));
   ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
   $("#clear-filters").addEventListener("click", clearFilters);
+  $("#sort-field").addEventListener("change", () => { state.sortField = $("#sort-field").value; render(); });
+  $("#sort-dir").addEventListener("click", () => {
+    state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
+    $("#sort-dir").textContent = state.sortDir === "desc" ? "↓ Neu" : "↑ Alt";
+    render();
+  });
   $$("[data-go-upload]").forEach((btn) => btn.addEventListener("click", () => switchView("upload")));
   $$(".density").forEach((btn) => btn.addEventListener("click", () => {
     $$(".density").forEach((item) => item.classList.toggle("active", item === btn));
@@ -725,7 +733,7 @@ function filterPhotos() {
   const category = $("#category-filter").value;
   const tag = $("#tag-filter").value.trim().toLowerCase();
   const now = new Date();
-  return state.photos.filter((photo) => {
+  const results = state.photos.filter((photo) => {
     const date = new Date(photo.takenAt);
     const haystack = [photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
     if (state.quick === "favorites" && !photo.favorite) return false;
@@ -738,6 +746,18 @@ function filterPhotos() {
     if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
     return true;
   });
+
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  results.sort((a, b) => {
+    switch (state.sortField) {
+      case "date":  return dir * (new Date(a.takenAt) - new Date(b.takenAt));
+      case "year":  return dir * (new Date(a.takenAt).getFullYear() - new Date(b.takenAt).getFullYear());
+      case "name":  return dir * a.name.localeCompare(b.name);
+      case "category": return dir * (a.category || "").localeCompare(b.category || "");
+      default:      return 0;
+    }
+  });
+  return results;
 }
 
 function renderGallery() {
