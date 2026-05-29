@@ -423,7 +423,10 @@ async function syncFromCloud(options = {}) {
     return;
   }
 
-  // Schritt 3: In Cloud gelöschte Fotos lokal entfernen
+  // Schritt 3: Ausstehende Metadaten-Updates in Cloud schreiben
+  await flushPendingMetadata();
+
+  // Schritt 4: In Cloud gelöschte Fotos lokal entfernen
   const cloudObjects = new Set((cloudPhotos.photos || []).map((p) => p.cloudObject).filter(Boolean));
   const toDelete = state.photos.filter((p) => p.cloudObject && !cloudObjects.has(p.cloudObject));
   for (const p of toDelete) {
@@ -431,7 +434,7 @@ async function syncFromCloud(options = {}) {
     state.photos = state.photos.filter((x) => x.id !== p.id);
   }
 
-  // Schritt 4: Neue und aktualisierte Fotos mergen
+  // Schritt 5: Neue und aktualisierte Fotos mergen
   let imported = 0;
   for (const cloudPhoto of cloudPhotos.photos || []) {
     const existing = state.photos.find((p) => p.cloudObject === cloudPhoto.cloudObject || p.id === cloudPhoto.id);
@@ -879,22 +882,10 @@ async function saveDetails(event) {
   photo.takenAt = new Date($("#detail-date").value).toISOString();
   photo.editedAt = new Date().toISOString();
   await savePhoto(photo);
-  if (photo.cloudObject) {
-    try {
-      await ensureServerAwake(DEFAULT_API_ENDPOINT);
-      await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ objectName: photo.cloudObject, metadata: withoutDataUrl(photo) })
-      }, 30000);
-    } catch (e) {
-      console.warn("[Meta-Update]", e);
-      alert("Metadaten konnten nicht in der Cloud gespeichert werden. Bitte erneut versuchen wenn der Server erreichbar ist.");
-    }
-  }
   state.photos = await getAllPhotos();
   render();
   closeDetail();
+  if (photo.cloudObject) pushMetadataToCloud(photo);
 }
 
 function getSelected() { return state.photos.find((p) => p.id === state.selectedId); }
@@ -1125,6 +1116,57 @@ async function shareApp() {
 }
 
 function safeFileName(name) { return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-"); }
+
+// ─── Cloud Metadata Push ──────────────────────────────────────
+
+async function pushMetadataToCloud(photo) {
+  try {
+    await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ objectName: photo.cloudObject, metadata: withoutDataUrl(photo) })
+    }, 15000);
+    removePendingMetadata(photo.id);
+  } catch (e) {
+    console.warn("[Meta-Update fehlgeschlagen, wird beim Sync nachgeholt]", e);
+    savePendingMetadata(photo);
+  }
+}
+
+function savePendingMetadata(photo) {
+  try {
+    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
+    pending[photo.id] = withoutDataUrl(photo);
+    safeSet("foodporn-pending-meta", JSON.stringify(pending));
+  } catch {}
+}
+
+function removePendingMetadata(id) {
+  try {
+    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
+    delete pending[id];
+    safeSet("foodporn-pending-meta", JSON.stringify(pending));
+  } catch {}
+}
+
+async function flushPendingMetadata() {
+  try {
+    const pending = JSON.parse(safeGet("foodporn-pending-meta") || "{}");
+    const entries = Object.values(pending);
+    if (!entries.length) return;
+    for (const meta of entries) {
+      if (!meta.cloudObject) continue;
+      try {
+        await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/metadata`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ objectName: meta.cloudObject, metadata: meta })
+        }, 15000);
+        removePendingMetadata(meta.id);
+      } catch {}
+    }
+  } catch {}
+}
 
 // ─── Share Target ─────────────────────────────────────────────
 
