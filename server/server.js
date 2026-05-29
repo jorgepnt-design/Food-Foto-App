@@ -142,11 +142,12 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
   }
 });
 
-app.delete("/api/photos/*", async (req, res, next) => {
+app.delete("/api/photos", async (req, res, next) => {
   if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
   try {
-    const objectName = req.params[0];
-    if (!objectName) return res.status(400).json({ error: "objectPath is required" });
+    const objectName = String(req.query.objectName || "");
+    if (!objectName) return res.status(400).json({ error: "objectName query param is required" });
+    console.log("[DELETE]", objectName);
     await bucket.file(objectName).delete({ ignoreNotFound: true });
     res.json({ ok: true, deleted: objectName });
   } catch (error) {
