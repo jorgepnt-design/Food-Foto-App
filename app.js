@@ -836,6 +836,13 @@ async function toggleSelectedFavorite() {
 async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
+  if (photo.cloudObject) {
+    try {
+      await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/${photo.cloudObject}`, { method: "DELETE" }, 15000);
+    } catch (error) {
+      console.error("[Cloud-Delete]", error);
+    }
+  }
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
   render();
