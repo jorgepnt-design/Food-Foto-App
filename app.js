@@ -837,10 +837,18 @@ async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
   if (photo.cloudObject) {
-    try {
-      await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/${photo.cloudObject}`, { method: "DELETE" }, 15000);
-    } catch (error) {
-      console.error("[Cloud-Delete]", error);
+    setCloudStatus("⏳ Aus Cloud löschen...", "#e67e22");
+    const awake = await ensureServerAwake(DEFAULT_API_ENDPOINT);
+    if (awake) {
+      try {
+        await fetchWithTimeout(`${DEFAULT_API_ENDPOINT}/api/photos/${photo.cloudObject}`, { method: "DELETE" }, 30000);
+        setCloudStatus("✓ Aus Cloud gelöscht.", "#27ae60");
+      } catch (error) {
+        setCloudStatus(`⚠ Cloud-Löschen fehlgeschlagen: ${error.message}`, "#c0392b");
+        console.error("[Cloud-Delete]", error);
+      }
+    } else {
+      setCloudStatus("⚠ Server nicht erreichbar – nur lokal gelöscht.", "#c0392b");
     }
   }
   await removePhoto(photo.id);
