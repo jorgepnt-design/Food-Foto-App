@@ -970,9 +970,23 @@ function resetEditState() {
   $("#saturation-range").value = "100";
 }
 
-function drawSelectedImage() {
+async function drawSelectedImage() {
   const photo = getSelected();
   if (!photo) return;
+  const rawUrl = photo.dataUrl || photo.cloudUrl || "";
+  let imgSrc = rawUrl;
+  // GCS-URLs würden Canvas "tainen" → zuerst als Blob laden und lokal cachen
+  if (rawUrl && !rawUrl.startsWith("data:")) {
+    try {
+      const resp = await fetch(rawUrl);
+      const blob = await resp.blob();
+      imgSrc = await new Promise((res) => {
+        const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob);
+      });
+      photo.dataUrl = imgSrc;
+      await savePhoto(photo);
+    } catch (e) { console.warn("[drawSelectedImage]", e); }
+  }
   const img = new Image();
   img.onload = () => {
     const canvas = $("#edit-canvas");
@@ -993,7 +1007,7 @@ function drawSelectedImage() {
     ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
     ctx.restore();
   };
-  img.src = photo.dataUrl;
+  img.src = imgSrc;
 }
 
 function buildCanvasFilter() {
