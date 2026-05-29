@@ -37,7 +37,7 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "Foodporn API",
-    routes: ["/health", "/api/photos", "/api/photos/upload", "/api/debug/storage"],
+    routes: ["/health", "/api/photos", "/api/photos/upload", "/api/user-edits", "/api/debug/storage"],
     bucket: bucketName
   });
 });
