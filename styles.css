@@ -1329,3 +1329,13 @@ textarea { resize: vertical; }
 }
 .detail-nav-btn:hover { background: var(--surface-soft); }
 .detail-nav-btn:active { transform: scale(0.92); }
+
+/* ─── Crop Undo / Original Buttons ──────────────────────────────── */
+#crop-undo,
+#crop-original {
+  transition: opacity .15s;
+}
+#crop-undo:disabled,
+#crop-original:disabled {
+  cursor: not-allowed;
+}
