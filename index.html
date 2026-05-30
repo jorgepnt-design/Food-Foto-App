@@ -10,7 +10,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260529-2" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260529-2" />
   <link rel="manifest" href="site.webmanifest?v=foodporn-20260529-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-7" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-8" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -292,6 +292,8 @@
       <button class="crop-ratio-btn" data-ratio="4:3">4:3</button>
       <button class="crop-ratio-btn" data-ratio="16:9">16:9</button>
       <button class="crop-ratio-btn" data-ratio="3:4">3:4</button>
+      <button id="crop-undo"    class="secondary-button lb-crop-btn" title="Letzten Crop rückgängig">↩ Rückgängig</button>
+      <button id="crop-original" class="secondary-button lb-crop-btn" title="Zum Original zurück">⟳ Original</button>
       <button id="crop-apply"  class="primary-button  lb-crop-btn">✓ Speichern</button>
       <button id="crop-cancel" class="secondary-button lb-crop-btn">✕ Abbrechen</button>
     </div>
@@ -305,7 +307,7 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-7" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260530-8" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
