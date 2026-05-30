@@ -1028,3 +1028,269 @@ textarea { resize: vertical; }
   .batch-select, .batch-input { max-width: 100%; }
   .batch-count { min-width: 70px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── FEATURE 8: Dark Mode ──────────────────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:           #141a18;
+    --surface:      #1e2a26;
+    --surface-soft: #243028;
+    --text:         #e8f0ec;
+    --muted:        #8faa9d;
+    --line:         #2e3d38;
+    --primary:      #3d8c7d;
+    --primary-dark: #2f6f63;
+    --accent:       #d4804a;
+    --accent-soft:  #2a1f15;
+    --danger:       #e05555;
+    --shadow:       0 18px 48px rgba(0,0,0,0.4);
+  }
+  .sidebar { background: #0d1512; }
+  input, select, textarea { background: #1e2a26; color: var(--text); border-color: var(--line); }
+  .photo-card { background: var(--surface); }
+  .filter-bar { background: var(--surface); }
+  .drop-zone  { background: #192420; }
+  .batch-toolbar { background: #0d1512; }
+  .modal-box  { background: var(--surface); }
+  .detail-panel { background: var(--surface); }
+  .settings-panel, .stat-card, .charts section,
+  .empty-state, .upload-item { background: var(--surface); }
+  /* Sort + View-Buttons */
+  .sort-dir-btn, .view-mode-btn { background: var(--surface); color: var(--text); }
+  #edit-canvas { background: #243028; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── FEATURE 5: Lightbox Crop-Tool ─────────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Aktions-Buttons unten links */
+.lightbox-actions-left {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  left: max(16px, env(safe-area-inset-left, 16px));
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+.lb-action-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s;
+  min-height: 44px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.lb-action-btn:hover,
+.lb-action-btn:active { background: rgba(255,255,255,0.28); }
+.lb-action-btn.lb-action-active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Crop-Toolbar */
+.lightbox-crop-bar {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(10,20,16,0.88);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
+  padding: 8px 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 20;
+  max-width: 96vw;
+}
+.crop-ratio-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: transparent;
+  color: rgba(255,255,255,0.75);
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+  transition: background .12s;
+}
+.crop-ratio-btn.active,
+.crop-ratio-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+.lb-crop-btn { min-height: 36px; padding: 0 14px; font-size: 13px; }
+
+/* Crop-Overlay */
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+/* Dunkle Maske außerhalb des Rahmens — via box-shadow */
+.crop-frame {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+  cursor: move;
+  pointer-events: all;
+  box-sizing: border-box;
+  /* Eck-Handles via ::before/::after */
+}
+.crop-frame::before,
+.crop-frame::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: #fff;
+  border-style: solid;
+}
+.crop-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+.crop-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+/* Lightbox img-wrap: relative für Crop-Overlay */
+.lightbox-img-wrap {
+  position: relative;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── FEATURE 11: Lightbox Toast ────────────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+.lightbox-toast {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: rgba(30,42,38,0.95);
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .22s, transform .22s;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.lightbox-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── FEATURE 7: Erweiterte Statistiken ─────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+
+.chart-full {
+  grid-column: 1 / -1;  /* volle Breite */
+}
+
+/* Monatlicher Balkendiagramm */
+.monthly-chart { overflow-x: auto; padding: 4px 0 8px; }
+.monthly-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 500px;
+  height: 120px;
+  padding: 0 4px;
+}
+.monthly-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.monthly-bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+.monthly-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--primary);
+  border-radius: 3px 3px 0 0;
+  transition: height .3s;
+}
+.monthly-val {
+  font-size: 0.65rem;
+  color: var(--muted);
+  line-height: 1;
+  min-height: 12px;
+}
+.monthly-label {
+  font-size: 0.6rem;
+  color: var(--muted);
+  transform: rotate(-45deg);
+  white-space: nowrap;
+  display: block;
+  margin-top: 4px;
+  transform-origin: top right;
+}
+
+/* Heatmap */
+.heatmap-wrap { overflow-x: auto; padding-bottom: 4px; }
+.heatmap-table {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 340px;
+}
+.heatmap-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.heatmap-header { margin-bottom: 2px; }
+.heatmap-day-label {
+  width: 28px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 4px;
+}
+.heatmap-slot-label {
+  flex: 1;
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-align: center;
+  min-width: 0;
+}
+.heatmap-cell {
+  flex: 1;
+  min-width: 0;
+  aspect-ratio: 1.4;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.7);
+  cursor: default;
+  transition: opacity .15s;
+}
+.heatmap-cell:hover { opacity: 0.8; }
+
+@media (max-width: 680px) {
+  .monthly-bars { height: 90px; gap: 2px; }
+  .monthly-label { font-size: 0.55rem; }
+  .heatmap-cell { font-size: 0.55rem; border-radius: 3px; }
+}
