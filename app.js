@@ -1273,18 +1273,31 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Touch-Swipe für iPhone / Android ────────────────────────────
   let touchStartX = 0;
   let touchStartY = 0;
+  let touchMoving = false;
   const lb = $("#lightbox");
 
   lb.addEventListener("touchstart", (e) => {
     touchStartX = e.changedTouches[0].clientX;
     touchStartY = e.changedTouches[0].clientY;
+    touchMoving = false;
   }, { passive: true });
+
+  // Non-passive: wir rufen ggf. preventDefault() auf um horizontalen Scroll zu blockieren
+  lb.addEventListener("touchmove", (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    // Wenn der Swipe eindeutig horizontal ist → Scroll verhindern
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+      e.preventDefault();
+      touchMoving = true;
+    }
+  }, { passive: false });
 
   lb.addEventListener("touchend", (e) => {
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
-    // Nur horizontal auswerten wenn Swipe eindeutig waagerecht ist
-    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    // Mindestens 40px horizontal, und mehr horizontal als vertikal
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
     if (dx < 0) {
       // Swipe links → nächstes Bild
       state.lightboxIndex = (state.lightboxIndex + 1) % state.filtered.length;
@@ -1295,8 +1308,9 @@ document.addEventListener("DOMContentLoaded", () => {
     showLightboxPhoto();
   }, { passive: true });
 
-  // Hintergrund-Klick (nicht auf Bild) schließt Lightbox
+  // Hintergrund-Klick (nicht auf Bild/Button) schließt Lightbox
   lb.addEventListener("click", (e) => {
+    if (touchMoving) { touchMoving = false; return; } // kein Close nach Swipe
     if (e.target === lb || e.target.classList.contains("lightbox-img-wrap")) closeLightbox();
   });
 });
