@@ -248,6 +248,45 @@ function removePhoto(id) {
   });
 }
 
+// Löscht ein Foto vollständig aus der Cloud:
+// 1. Physisch aus GCS (DELETE /api/photos?objectName=...)
+// 2. Metadaten + ID in __deleted__ Liste (DELETE /api/user-edits/:id)
+// Beide Aufrufe werden awaitet mit Retry wenn Render schläft.
+async function deleteFromCloud(photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint || !photo) return;
+
+  // Render aufwecken falls nötig
+  await ensureServerAwake(endpoint).catch(() => {});
+
+  // 1. Physisch aus GCS löschen
+  if (photo.cloudObject) {
+    try {
+      await fetchWithTimeout(
+        `${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`,
+        { method: "DELETE" },
+        20000
+      );
+    } catch (e) {
+      console.warn("[GCS DELETE]", e.message);
+    }
+  }
+
+  // 2. In __deleted__ eintragen (id + cloudObject)
+  const idsToDelete = [photo.id, photo.cloudObject].filter(Boolean);
+  for (const id of idsToDelete) {
+    try {
+      await fetchWithTimeout(
+        `${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+        10000
+      );
+    } catch (e) {
+      console.warn("[user-edits DELETE]", e.message);
+    }
+  }
+}
+
 function setupCategorySelects() {
   $("#category-filter").innerHTML = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
   $("#detail-category").innerHTML = categories.map((c) => `<option>${c}</option>`).join("");
@@ -1115,9 +1154,9 @@ function renderGallery() {
       if (state.batchMode) return;
       if (!confirm("Dieses Foto wirklich löschen?")) return;
       await removePhoto(photo.id);
-      deleteCloudUserEdit(photo);
       state.photos = state.photos.filter((item) => item.id !== photo.id);
       render();
+      deleteFromCloud(photo);
     });
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
@@ -1242,13 +1281,13 @@ async function toggleSelectedFavorite() {
 async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
+  // Lokal sofort entfernen
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
-  // User-Edits aus Cloud entfernen damit Metadaten nicht beim nächsten
-  // Sync eines anderen Geräts wieder auftauchen
-  deleteCloudUserEdit(photo);
   render();
   closeDetail();
+  // Cloud-Löschung im Hintergrund (GCS + __deleted__ Liste)
+  deleteFromCloud(photo);
 }
 
 // ─── Image Editing ───────────────────────────────────────────────
@@ -1864,13 +1903,18 @@ async function batchDelete() {
   if (!n) return;
   if (!confirm(`${n} Foto${n === 1 ? "" : "s"} wirklich löschen?`)) return;
 
-  for (const id of Array.from(state.selectedIds)) {
-    const photo = state.photos.find((p) => p.id === id);
-    await removePhoto(id);
-    if (photo) deleteCloudUserEdit(photo);
+  const photosToDelete = Array.from(state.selectedIds)
+    .map((id) => state.photos.find((p) => p.id === id))
+    .filter(Boolean);
+  for (const photo of photosToDelete) {
+    await removePhoto(photo.id);
   }
   state.photos = state.photos.filter((p) => !state.selectedIds.has(p.id));
   batchCancel();
+  // Cloud-Löschung im Hintergrund
+  for (const photo of photosToDelete) {
+    deleteFromCloud(photo);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
