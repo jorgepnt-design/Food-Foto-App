@@ -1,7 +1,7 @@
 // ─── Foodporn Service Worker ──────────────────────────────────────
 // v5 — Offline-Cache + Share-Target
 
-const CACHE_VERSION = "foodporn-v5";
+const CACHE_VERSION = "foodporn-v6";
 const SHARE_CACHE   = "foodporn-share-v1";
 
 // Alle statischen App-Shell-Dateien die gecacht werden sollen
