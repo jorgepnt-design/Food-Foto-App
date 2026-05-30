@@ -71,8 +71,6 @@ const state = {
   sortDir: safeGet("foodporn-sort-dir") || "desc",
   galleryView: safeGet("foodporn-gallery-view") || "grid",
   galleryCols: parseInt(safeGet("foodporn-gallery-cols") || "3", 10),
-  timelineYear: null,
-  timelineMonth: null,
   batchMode: false,
   selectedIds: new Set(),
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
@@ -446,20 +444,6 @@ function bindEvents() {
   });
   updateCloudStatus();
 
-  // ── Sidebar Timeline-Toggle ──────────────────────────────────────
-  const tlToggle = $("#timeline-toggle");
-  if (tlToggle) {
-    tlToggle.addEventListener("click", () => {
-      const tree = $("#timeline-tree");
-      const expanded = tlToggle.getAttribute("aria-expanded") !== "false";
-      tlToggle.setAttribute("aria-expanded", String(!expanded));
-      tree.style.display = expanded ? "none" : "";
-      const arrow = tlToggle.querySelector(".toggle-arrow");
-      if (arrow) arrow.textContent = expanded ? "▸" : "▾";
-      if (!expanded) renderTimeline(); // Baum aufbauen wenn aufgeklappt
-    });
-  }
-
   // ── Swipe auf dem Detail-Panel (iPhone) ─────────────────────────
   const detailPanel = $("#detail-panel");
   let dtStartX = 0, dtStartY = 0, dtSwiping = false;
@@ -594,8 +578,6 @@ function clearFilters() {
   $("#category-filter").value = "";
   $("#tag-filter").value = "";
   state.quick = "all";
-  state.timelineYear = null;
-  state.timelineMonth = null;
   $$(".quick-filter").forEach((item) => item.classList.toggle("active", item.dataset.quick === "all"));
   persistFilters();
   render();
@@ -611,8 +593,6 @@ function persistFilters() {
       cat:   $("#category-filter").value,
       tag:   $("#tag-filter").value,
       quick: state.quick,
-      ty:    state.timelineYear,
-      tm:    state.timelineMonth
     };
     localStorage.setItem("foodporn-filters", JSON.stringify(f));
   } catch {}
@@ -632,8 +612,6 @@ function restoreFilters() {
       state.quick = f.quick;
       $$(".quick-filter").forEach((b) => b.classList.toggle("active", b.dataset.quick === f.quick));
     }
-    if (f.ty != null) state.timelineYear  = f.ty;
-    if (f.tm != null) state.timelineMonth = f.tm;
   } catch {}
 }
 
@@ -1197,7 +1175,6 @@ function render() {
   state.filtered = sortPhotos(filterPhotos());
   renderGallery();
   renderStats();
-  renderTimeline();
 }
 
 function filterPhotos() {
@@ -1218,9 +1195,6 @@ function filterPhotos() {
     if (to && date > to) return false;
     if (category && photo.category !== category) return false;
     if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
-    // ── Timeline-Filter ────────────────────────────────────────────
-    if (state.timelineYear  !== null && date.getFullYear() !== state.timelineYear)  return false;
-    if (state.timelineMonth !== null && date.getMonth()    !== state.timelineMonth) return false;
     return true;
   });
 }
@@ -1815,83 +1789,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.target === lb || e.target.classList.contains("lightbox-img-wrap")) closeLightbox();
   });
 });
-
-// ═══════════════════════════════════════════════════════════════════
-// ─── FEATURE: Zeitraum-Baum (Sidebar Timeline) ───────────────────
-// ═══════════════════════════════════════════════════════════════════
-
-const MONTHS_DE = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
-const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function renderTimeline() {
-  const tree = $("#timeline-tree");
-  if (!tree) return;
-
-  // Zähle Fotos pro Jahr und Monat
-  const counts = {}; // { year: { total, months: { m: count } } }
-  state.photos.forEach((p) => {
-    const d = new Date(p.takenAt);
-    if (isNaN(d)) return;
-    const y = d.getFullYear();
-    const m = d.getMonth();
-    if (!counts[y]) counts[y] = { total: 0, months: {} };
-    counts[y].total++;
-    counts[y].months[m] = (counts[y].months[m] || 0) + 1;
-  });
-
-  const years = Object.keys(counts).map(Number).sort((a, b) => b - a);
-  const monthNames = state.lang === "de" ? MONTHS_DE : MONTHS_EN;
-
-  tree.innerHTML = "";
-
-  // "Alle" zurücksetzen
-  const allBtn = document.createElement("button");
-  allBtn.className = "tl-all" + (state.timelineYear === null ? " tl-active" : "");
-  allBtn.innerHTML = `<span>Alle</span><span class="tl-count">${state.photos.length}</span>`;
-  allBtn.addEventListener("click", () => {
-    state.timelineYear = null;
-    state.timelineMonth = null;
-    render();
-  });
-  tree.appendChild(allBtn);
-
-  years.forEach((year) => {
-    const info = counts[year];
-    // Jahr-Zeile
-    const yearBtn = document.createElement("button");
-    yearBtn.className = "tl-year" + (state.timelineYear === year && state.timelineMonth === null ? " tl-active" : "");
-    const isOpen = state.timelineYear === year;
-    yearBtn.innerHTML = `<span class="tl-arrow">${isOpen ? "▾" : "▸"}</span><span>${year}</span><span class="tl-count">${info.total}</span>`;
-    yearBtn.addEventListener("click", () => {
-      if (state.timelineYear === year && state.timelineMonth === null) {
-        // Nochmal klicken → Alle
-        state.timelineYear = null;
-        state.timelineMonth = null;
-      } else {
-        state.timelineYear = year;
-        state.timelineMonth = null;
-      }
-      render();
-    });
-    tree.appendChild(yearBtn);
-
-    // Monate (nur wenn Jahr aufgeklappt)
-    if (state.timelineYear === year) {
-      const months = Object.keys(info.months).map(Number).sort((a, b) => b - a);
-      months.forEach((m) => {
-        const monthBtn = document.createElement("button");
-        monthBtn.className = "tl-month" + (state.timelineMonth === m ? " tl-active" : "");
-        monthBtn.innerHTML = `<span>${monthNames[m]}</span><span class="tl-count">${info.months[m]}</span>`;
-        monthBtn.addEventListener("click", () => {
-          state.timelineYear = year;
-          state.timelineMonth = state.timelineMonth === m ? null : m;
-          render();
-        });
-        tree.appendChild(monthBtn);
-      });
-    }
-  });
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // ─── FEATURE: Batch-Edit (Stapelbearbeitung) ─────────────────────
