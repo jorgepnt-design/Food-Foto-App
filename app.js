@@ -722,8 +722,12 @@ async function syncFromCloud(options = {}) {
     console.warn("[user-edits]", e.message);
   }
 
-  // Cloud-Deleted-Liste lokal mergen
+  // ── Deleted-Listen zusammenführen ──────────────────────────────
+  // Cloud → lokal mergen
   const cloudDeleted = Array.isArray(userEdits.__deleted__) ? userEdits.__deleted__ : [];
+  const localDeletedArr = Array.from(getDeletedSet());
+
+  // Alle IDs in lokale Liste eintragen
   if (cloudDeleted.length) {
     try {
       const localSet = getDeletedSet();
@@ -733,7 +737,18 @@ async function syncFromCloud(options = {}) {
     } catch {}
   }
 
-  // Bereits lokal vorhandene gelöschte Fotos aus IndexedDB entfernen
+  // Lokal → Cloud hochladen (falls lokale Liste mehr hat als Cloud)
+  // z.B. wenn Laptop gelöscht hat aber Render schlief
+  if (localDeletedArr.length > cloudDeleted.length) {
+    for (const id of localDeletedArr) {
+      if (!cloudDeleted.includes(id)) {
+        fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
+          { method: "DELETE" }).catch(() => {});
+      }
+    }
+  }
+
+  // Lokal vorhandene gelöschte Fotos aus IndexedDB entfernen
   const allLocal = await getAllPhotos();
   for (const p of allLocal) {
     if (isDeleted(p)) {
@@ -773,6 +788,27 @@ async function syncFromCloud(options = {}) {
     if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
     else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
+  // ── Fotos die nicht mehr in der Cloud sind lokal löschen ────────
+  // Das fängt auch Fälle ab wo __deleted__ noch nicht angekommen ist
+  // weil Render gerade schläft
+  const cloudObjectSet = new Set(
+    (cloudPhotos.photos || []).map((cp) => cp.cloudObject).filter(Boolean)
+  );
+  const cloudIdSet = new Set(
+    (cloudPhotos.photos || []).map((cp) => cp.id).filter(Boolean)
+  );
+  const currentLocal = await getAllPhotos();
+  for (const p of currentLocal) {
+    if (p.storage !== "gcs" && p.storage !== "cloud") continue; // nur Cloud-Fotos prüfen
+    const stillInCloud = (p.cloudObject && cloudObjectSet.has(p.cloudObject))
+                      || (p.id && cloudIdSet.has(p.id));
+    if (!stillInCloud) {
+      // Foto ist in der Cloud nicht mehr vorhanden → lokal löschen
+      addToDeletedSet(p);
+      await removePhotoFromDb(p.id);
+    }
+  }
+
   state.photos = await getAllPhotos();
   render();
   if (!options.silent) switchView("gallery");
