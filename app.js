@@ -860,8 +860,17 @@ async function handleFiles(fileList) {
     uploadList.prepend(item);
     let dataUrl, buffer;
     try {
-      buffer  = await readAsArrayBuffer(file);
       dataUrl = await createLocalPreview(file);
+      // ArrayBuffer aus DataUrl ableiten — nur ein FileReader nötig
+      const base64 = dataUrl.split(",")[1];
+      if (base64) {
+        const binary = atob(base64);
+        buffer = new ArrayBuffer(binary.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+      } else {
+        buffer = new ArrayBuffer(0);
+      }
     } catch (error) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
@@ -976,19 +985,16 @@ function getCloudObjectFileName(objectName) {
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    const timer = setTimeout(() => {
-      reader.abort();
-      reject(new Error("Datei konnte nicht gelesen werden (Timeout)"));
-    }, 30000);
-    reader.onload = () => { clearTimeout(timer); resolve(reader.result); };
-    reader.onerror = () => { clearTimeout(timer); reject(reader.error); };
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
 }
 
 async function createLocalPreview(file) {
-  const raw = await readAsDataUrl(file);
-  return resizeDataUrl(raw, 1800, file.type || "image/jpeg", 0.84);
+  // Direkt als DataUrl lesen, kein Resize
+  // (Resize-Schritt kann auf iOS bei großen HEIC-Dateien hängen)
+  return readAsDataUrl(file);
 }
 
 function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
@@ -1023,12 +1029,8 @@ function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
 function readAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    const timer = setTimeout(() => {
-      reader.abort();
-      reject(new Error("Datei konnte nicht gelesen werden (Timeout)"));
-    }, 30000);
-    reader.onload = () => { clearTimeout(timer); resolve(reader.result); };
-    reader.onerror = () => { clearTimeout(timer); reject(reader.error); };
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
   });
 }
