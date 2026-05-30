@@ -10,7 +10,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260529-2" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260529-2" />
   <link rel="manifest" href="site.webmanifest?v=foodporn-20260529-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-5" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-6" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -158,6 +158,8 @@
         <div class="charts">
           <section><h3 data-i18n="categoryDistribution">Kategorien</h3><div id="category-bars" class="bars"></div></section>
           <section><h3 data-i18n="tagDistribution">Beliebte Tags</h3><div id="tag-bars" class="bars"></div></section>
+          <section class="chart-full"><h3>📅 Fotos pro Monat</h3><div id="monthly-chart" class="monthly-chart"></div></section>
+          <section class="chart-full"><h3>📆 Wochentag &amp; Uhrzeit</h3><div id="heatmap-chart" class="heatmap-wrap"></div></section>
         </div>
       </section>
 
@@ -257,11 +259,35 @@
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
     <button id="lightbox-close" class="lightbox-close" title="Schließen">✕</button>
     <button id="lightbox-prev" class="lightbox-nav lightbox-prev" title="Zurück">‹</button>
+
     <div class="lightbox-img-wrap">
+      <!-- Crop-Overlay (nur sichtbar wenn Crop-Modus aktiv) -->
+      <div id="crop-overlay" class="crop-overlay hidden">
+        <div id="crop-frame" class="crop-frame"></div>
+      </div>
       <img id="lightbox-img" src="" alt="" />
     </div>
+
     <button id="lightbox-next" class="lightbox-nav lightbox-next" title="Weiter">›</button>
     <div id="lightbox-caption" class="lightbox-caption"></div>
+
+    <!-- Toolbar unten links -->
+    <div class="lightbox-actions-left">
+      <button id="lightbox-share"  class="lb-action-btn" title="Teilen">⬆ Teilen</button>
+      <button id="lightbox-crop-toggle" class="lb-action-btn" title="Zuschneiden">✂ Crop</button>
+    </div>
+
+    <!-- Crop-Toolbar (erscheint wenn Crop aktiv) -->
+    <div id="lightbox-crop-bar" class="lightbox-crop-bar hidden">
+      <button class="crop-ratio-btn active" data-ratio="free">Frei</button>
+      <button class="crop-ratio-btn" data-ratio="1:1">1:1</button>
+      <button class="crop-ratio-btn" data-ratio="4:3">4:3</button>
+      <button class="crop-ratio-btn" data-ratio="16:9">16:9</button>
+      <button class="crop-ratio-btn" data-ratio="3:4">3:4</button>
+      <button id="crop-apply"  class="primary-button  lb-crop-btn">✓ Speichern</button>
+      <button id="crop-cancel" class="secondary-button lb-crop-btn">✕ Abbrechen</button>
+    </div>
+
     <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
   </div>
 
@@ -271,7 +297,7 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-5" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260530-6" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
