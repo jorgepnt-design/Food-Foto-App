@@ -71,6 +71,10 @@ const state = {
   sortDir: safeGet("foodporn-sort-dir") || "desc",
   galleryView: safeGet("foodporn-gallery-view") || "grid",
   galleryCols: parseInt(safeGet("foodporn-gallery-cols") || "3", 10),
+  timelineYear: null,
+  timelineMonth: null,
+  batchMode: false,
+  selectedIds: new Set(),
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
@@ -1171,6 +1175,9 @@ function filterPhotos() {
     if (to && date > to) return false;
     if (category && photo.category !== category) return false;
     if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
+    // ── Timeline-Filter ────────────────────────────────────────────
+    if (state.timelineYear  !== null && date.getFullYear() !== state.timelineYear)  return false;
+    if (state.timelineMonth !== null && date.getMonth()    !== state.timelineMonth) return false;
     return true;
   });
 }
