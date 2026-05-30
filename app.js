@@ -934,6 +934,14 @@ async function handleFiles(fileList) {
     setUploadItemStatus(item, "Speichere lokal...");
     await savePhotoBestEffort(photo, item);
 
+    // Schritt 4b: Thumbnail asynchron erstellen (non-blocking)
+    createThumbnail(photo.dataUrl, photo.type).then(async (thumb) => {
+      if (thumb) {
+        photo.thumbUrl = thumb;
+        await savePhoto(photo).catch(() => {});
+      }
+    });
+
     // Schritt 5: Cloud-Upload (optional)
     if (endpoint && photo.storage === "local") {
       setUploadItemStatus(item, "Cloud-Upload...");
@@ -1046,8 +1054,29 @@ function readAsDataUrl(file) {
 }
 
 async function createLocalPreview(file) {
-  const raw = await readAsDataUrl(file);
-  return resizeDataUrl(raw, 1800, file.type || "image/jpeg", 0.84);
+  return readAsDataUrl(file);
+}
+
+function createThumbnail(dataUrl, type) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => { img.onload = null; resolve(null); }, 8000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const maxEdge = 400;
+        const ratio = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        if (ratio >= 1) { resolve(dataUrl); return; }
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL(type || "image/jpeg", 0.75));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.src = dataUrl;
+  });
 }
 
 function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
@@ -1207,7 +1236,7 @@ function renderGallery() {
 
   validFiltered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
-    node.querySelector("img").src = getDisplayImageUrl(photo);
+    node.querySelector("img").src = getDisplayImageUrl(photo, true);
     node.querySelector("img").alt = photo.description || photo.name;
     node.querySelector("h3").textContent = photo.title || photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
@@ -1247,7 +1276,9 @@ function formatDate(iso) {
   return new Intl.DateTimeFormat(state.lang === "de" ? "de-DE" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 }
 
-function getDisplayImageUrl(photo) {
+function getDisplayImageUrl(photo, thumb) {
+  // thumb=true: kleines Thumbnail für Galerie-Kacheln
+  if (thumb && photo.thumbUrl) return photo.thumbUrl;
   if (!photo.dataUrl) return "";
   if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
   const sep = photo.dataUrl.includes("?") ? "&" : "?";
