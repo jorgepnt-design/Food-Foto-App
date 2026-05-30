@@ -686,6 +686,19 @@ async function syncFromCloud(options = {}) {
     console.warn("[user-edits]", e.message);
   }
 
+  // Cloud-Deleted-Liste lokal mergen (damit Löschungen anderer Geräte ankommen)
+  const cloudDeleted = Array.isArray(userEdits.__deleted__) ? userEdits.__deleted__ : [];
+  if (cloudDeleted.length) {
+    try {
+      const localSet = getDeletedSet();
+      cloudDeleted.forEach((id) => localSet.add(id));
+      const arr = Array.from(localSet);
+      localStorage.setItem(DELETED_KEY, JSON.stringify(
+        arr.length > 500 ? arr.slice(arr.length - 500) : arr
+      ));
+    } catch {}
+  }
+
   let imported = 0, skipped = 0;
   for (const cp of cloudPhotos.photos || []) {
     // ── Gelöschte Fotos überspringen ──────────────────────────────
@@ -2155,9 +2168,16 @@ async function cropRestoreOriginal() {
 // auf einem anderen Gerät wieder auftauchen.
 function deleteCloudUserEdit(photo) {
   const endpoint = getApiEndpoint();
-  if (!photo || !photo.id || !endpoint) return;
-  // Fire-and-forget — kein await, kein Fehler-Blocking
-  fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.id)}`, {
-    method: "DELETE"
-  }, 10000).catch((e) => console.warn("[user-edits DELETE]", e.message));
+  if (!photo || !endpoint) return;
+  // Sowohl id als auch cloudObject löschen (fire-and-forget)
+  if (photo.id) {
+    fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.id)}`, {
+      method: "DELETE"
+    }, 10000).catch((e) => console.warn("[user-edits DELETE id]", e.message));
+  }
+  if (photo.cloudObject && photo.cloudObject !== photo.id) {
+    fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.cloudObject)}`, {
+      method: "DELETE"
+    }, 10000).catch((e) => console.warn("[user-edits DELETE cloudObject]", e.message));
+  }
 }
