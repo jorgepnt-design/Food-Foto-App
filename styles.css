@@ -844,3 +844,187 @@ textarea { resize: vertical; }
   .card-actions { display: none; } /* Platz sparen auf SE */
   .view-mode-btn { min-width: 36px; min-height: 36px; width: 36px; height: 36px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Zeitraum-Baum (Sidebar Timeline) ──────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+
+#timeline-section { padding-bottom: 4px; }
+
+.sidebar-toggle {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  color: #9caea3;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+.sidebar-toggle:hover { color: #c8d8d0; }
+.toggle-arrow { font-size: 0.85rem; }
+
+.timeline-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tl-all,
+.tl-year,
+.tl-month {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #c8d8d0;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background .12s;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 36px;
+}
+.tl-all:hover, .tl-year:hover, .tl-month:hover {
+  background: rgba(255,255,255,0.08);
+}
+.tl-all.tl-active, .tl-year.tl-active, .tl-month.tl-active {
+  background: rgba(47,111,99,0.55);
+  color: #fff;
+  font-weight: 600;
+}
+.tl-all  { font-weight: 600; }
+.tl-year { padding-left: 8px; }
+.tl-month {
+  padding-left: 28px;
+  font-size: 0.82rem;
+  color: #9caea3;
+}
+.tl-month.tl-active { color: #fff; }
+.tl-arrow { width: 12px; font-size: 0.7rem; flex-shrink: 0; }
+.tl-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  background: rgba(255,255,255,0.1);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 24px;
+  text-align: center;
+}
+.tl-active .tl-count { opacity: 0.9; background: rgba(255,255,255,0.2); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Batch-Edit (Stapelbearbeitung) ────────────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+
+.batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #172520;
+  color: #fff;
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+}
+.batch-count {
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 90px;
+  color: #c8d8d0;
+}
+.batch-select {
+  height: 36px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 0.85rem;
+  flex: 1 1 140px;
+  max-width: 180px;
+}
+.batch-select option { background: #172520; color: #fff; }
+.batch-input {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 0.85rem;
+  flex: 1 1 160px;
+  max-width: 220px;
+}
+.batch-input::placeholder { color: rgba(255,255,255,0.4); }
+.batch-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Batch-Toolbar Buttons: Override für dunklen Hintergrund */
+.batch-toolbar .secondary-button {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.2);
+  color: #fff;
+}
+.batch-toolbar .secondary-button:hover { background: rgba(255,255,255,0.22); }
+
+/* Checkbox auf jeder Card */
+.batch-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  z-index: 5;
+  cursor: pointer;
+  accent-color: var(--primary);
+  opacity: 0;
+  transition: opacity .15s;
+  border-radius: 4px;
+}
+/* Im Batch-Modus immer sichtbar */
+.photo-card.batch-mode .batch-checkbox { opacity: 1; }
+/* Beim Hover auf Card immer sichtbar */
+.photo-card:hover .batch-checkbox { opacity: 1; }
+
+.photo-card {
+  position: relative; /* nötig für absolute checkbox */
+}
+
+/* Markierte Cards: grüner Rahmen */
+.photo-card.batch-selected {
+  outline: 3px solid var(--primary);
+  outline-offset: -2px;
+}
+.photo-card.batch-selected .batch-checkbox { opacity: 1; }
+
+/* Batch-Modus: Card-Klick nicht auf Detail öffnen → Cursor zeigen */
+.photo-card.batch-mode .photo-open { cursor: default; }
+.photo-card.batch-mode .photo-open:hover { opacity: 1; }
+
+/* Mobile: Toolbar umbrechbar */
+@media (max-width: 680px) {
+  .batch-toolbar { padding: 10px; gap: 6px; }
+  .batch-select, .batch-input { max-width: 100%; }
+  .batch-count { min-width: 70px; }
+}
