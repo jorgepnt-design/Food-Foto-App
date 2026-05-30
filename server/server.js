@@ -100,15 +100,15 @@ app.get("/api/photos", async (req, res, next) => {
     const [files] = await bucket.getFiles({ prefix: "food-photos/" });
     const userEdits = await readUserEdits();
 
-    // Deleted-Liste aus user-edits laden
+    // Deleted-Liste aus user-edits laden (IDs + cloudObject-Pfade)
     const deletedSet = new Set(Array.isArray(userEdits.__deleted__) ? userEdits.__deleted__ : []);
 
     const photoResults = await Promise.all(files.map(async (file) => {
       const [metadata] = await file.getMetadata();
       const custom = metadata.metadata || {};
       const id = custom.id || file.name;
-      // Gelöschte Fotos überspringen (nach ID und nach cloudObject)
-      if (deletedSet.has(id) || deletedSet.has(file.name)) return null;
+      // Gelöschte Fotos überspringen — prüfe id, cloudObject-Pfad und Dateiname
+      if (deletedSet.has(id) || deletedSet.has(file.name) || deletedSet.has(custom.cloudObject)) return null;
       const edits = userEdits[id] || {};
       const cloudUrl = await getReadableUrl(file, file.name);
       return {
