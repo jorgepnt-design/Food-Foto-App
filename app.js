@@ -1181,7 +1181,7 @@ function filterPhotos() {
   const now = new Date();
   return state.photos.filter((photo) => {
     const date = new Date(photo.takenAt);
-    const haystack = [photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
+    const haystack = [photo.title, photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
     if (state.quick === "favorites" && !photo.favorite) return false;
     if (state.quick === "untagged" && photo.tags.length) return false;
     if (state.quick === "thisMonth" && (date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear())) return false;
