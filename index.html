@@ -10,7 +10,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260529-2" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260529-2" />
   <link rel="manifest" href="site.webmanifest?v=foodporn-20260529-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-33" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-1780136342" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -301,13 +301,18 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-33" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-1780136342" onerror="document.body.classList.add('script-failed')"></script>
   <script>
-    // Service Worker deregistrieren falls vorhanden
+    // SW deregistrieren + alle Caches löschen
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(regs) {
         regs.forEach(function(r) { r.unregister(); });
       });
+      if (window.caches) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(k) { caches.delete(k); });
+        });
+      }
     }
   </script>
   <script>
