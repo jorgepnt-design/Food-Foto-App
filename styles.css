@@ -551,3 +551,27 @@ textarea { resize: vertical; }
   .cols-control { display: none; }
   #cols-slider { width: 56px; }
 }
+
+/* ── Pure-Modus: Klick-Cursor + Hover-Effekt ── */
+#gallery-grid.view-pure .photo-open {
+  cursor: zoom-in;
+  transition: opacity .15s;
+}
+#gallery-grid.view-pure .photo-open:hover {
+  opacity: 0.88;
+}
+
+/* ── Lightbox: Swipe-Indikator auf Mobile ── */
+@media (hover: none) and (pointer: coarse) {
+  .lightbox-nav { opacity: 0.5; }
+  .lightbox::after {
+    content: "← Swipe →";
+    position: absolute;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.35);
+    font-size: 12px;
+    pointer-events: none;
+  }
+}
