@@ -100,10 +100,15 @@ app.get("/api/photos", async (req, res, next) => {
     const [files] = await bucket.getFiles({ prefix: "food-photos/" });
     const userEdits = await readUserEdits();
 
-    const photos = await Promise.all(files.map(async (file) => {
+    // Deleted-Liste aus user-edits laden
+    const deletedSet = new Set(Array.isArray(userEdits.__deleted__) ? userEdits.__deleted__ : []);
+
+    const photoResults = await Promise.all(files.map(async (file) => {
       const [metadata] = await file.getMetadata();
       const custom = metadata.metadata || {};
       const id = custom.id || file.name;
+      // Gelöschte Fotos überspringen (nach ID und nach cloudObject)
+      if (deletedSet.has(id) || deletedSet.has(file.name)) return null;
       const edits = userEdits[id] || {};
       const cloudUrl = await getReadableUrl(file, file.name);
       return {
@@ -119,6 +124,7 @@ app.get("/api/photos", async (req, res, next) => {
         cloudUrl
       };
     }));
+    const photos = photoResults.filter(Boolean);
     res.json({ photos });
   } catch (error) { next(error); }
 });
@@ -169,6 +175,24 @@ app.put("/api/user-edits", async (req, res, next) => {
     all[id] = { ...(all[id] || {}), ...edits, updatedAt: new Date().toISOString() };
     await writeUserEdits(all);
     res.json({ ok: true, id });
+  } catch (error) { next(error); }
+});
+
+// DELETE /api/user-edits/:id — Metadaten löschen + ID in __deleted__ eintragen
+app.delete("/api/user-edits/:id", async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS_BUCKET_NAME not configured" });
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ error: "id is required" });
+    const all = await readUserEdits();
+    // Metadaten des Fotos entfernen
+    delete all[id];
+    // In __deleted__ Liste eintragen (Array, dedupliziert, max 2000)
+    const deleted = Array.isArray(all.__deleted__) ? all.__deleted__ : [];
+    if (!deleted.includes(id)) deleted.push(id);
+    all.__deleted__ = deleted.length > 2000 ? deleted.slice(deleted.length - 2000) : deleted;
+    await writeUserEdits(all);
+    res.json({ ok: true, deleted: id });
   } catch (error) { next(error); }
 });
 
