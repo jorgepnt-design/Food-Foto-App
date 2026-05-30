@@ -77,6 +77,19 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+// ── Polyfills für ältere iOS-Versionen ───────────────────────────
+// crypto.randomUUID: erst ab iOS 15.4 — Fallback für ältere Geräte
+function generateUUID() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return generateUUID();
+  }
+  // Fallback: RFC4122 v4 UUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 function safeGet(key) {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
 }
@@ -645,7 +658,7 @@ async function syncFromCloud(options = {}) {
     Object.assign(cp, edits);
     const existing = state.photos.find((p) => p.cloudObject === cp.cloudObject || p.id === cp.id);
     const merged = {
-      id: cp.id || crypto.randomUUID(),
+      id: cp.id || generateUUID(),
       name: cp.name || getCloudObjectFileName(cp.cloudObject) || "cloud-photo.jpg",
       type: cp.type || "image/jpeg",
       dataUrl: cp.cloudUrl,
@@ -674,7 +687,12 @@ async function syncFromCloud(options = {}) {
 // ─── Upload ───────────────────────────────────────────────────────
 
 async function wakeUpRender(endpoint) {
-  try { await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) }); } catch { /* ignorieren */ }
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    await fetch(`${endpoint}/health`, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    clearTimeout(t);
+  } catch { /* ignorieren */ }
 }
 
 function setUploadItemStatus(item, text, isError = false) {
@@ -686,11 +704,21 @@ function setUploadItemStatus(item, text, isError = false) {
 
 // Schneller Hash für Duplikat-Erkennung (erste 64KB + Dateigröße)
 async function fileHash(buffer) {
-  const slice = buffer.slice(0, 65536);
-  const hashBuf = await crypto.subtle.digest("SHA-256", slice);
-  const arr = Array.from(new Uint8Array(hashBuf));
-  return arr.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16)
-    + "_" + buffer.byteLength;
+  try {
+    // crypto.subtle braucht HTTPS — Fallback auf einfachen Checksum
+    if (typeof crypto !== "undefined" && crypto.subtle) {
+      const slice = buffer.slice(0, 65536);
+      const hashBuf = await crypto.subtle.digest("SHA-256", slice);
+      const arr = Array.from(new Uint8Array(hashBuf));
+      return arr.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16)
+        + "_" + buffer.byteLength;
+    }
+  } catch {}
+  // Fallback: einfacher Checksum aus ersten Bytes + Größe
+  const view = new Uint8Array(buffer, 0, Math.min(256, buffer.byteLength));
+  let sum = 0;
+  for (let i = 0; i < view.length; i++) sum = (sum * 31 + view[i]) >>> 0;
+  return sum.toString(16) + "_" + buffer.byteLength;
 }
 
 async function handleFiles(fileList) {
@@ -727,7 +755,7 @@ async function handleFiles(fileList) {
     const exif = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
     const photo = {
-      id: crypto.randomUUID(), name: file.name, type: normalizeImageType(file.type),
+      id: generateUUID(), name: file.name, type: normalizeImageType(file.type),
       dataUrl, takenAt: created,
       camera: [exif.make, exif.model].filter(Boolean).join(" ") || "Unbekannt",
       category: suggestCategory(created), tags: suggestTags(file.name),
@@ -1971,16 +1999,18 @@ async function shareLightboxPhoto() {
   const text  = [photo.title, photo.description, (photo.tags || []).join(" ")].filter(Boolean).join(" · ");
 
   // Web Share API mit Bild-Blob (iOS/Android)
-  if (navigator.share && navigator.canShare) {
+  if (navigator.share) {
     try {
       const src = getDisplayImageUrl(photo);
-      // Bild als Blob laden
+      // Bild als Blob laden und als Datei teilen (iOS 15+)
       const blob = await fetch(src).then((r) => {
         if (!r.ok) throw new Error("fetch failed");
         return r.blob();
       });
       const file = new File([blob], photo.name || "food.jpg", { type: blob.type || "image/jpeg" });
-      if (navigator.canShare({ files: [file] })) {
+      // canShare ist nicht auf allen iOS-Versionen vorhanden → sicher prüfen
+      const canShareFiles = typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
+      if (canShareFiles) {
         await navigator.share({ title, text, files: [file] });
         return;
       }
