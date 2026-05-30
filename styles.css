@@ -372,3 +372,182 @@ textarea { resize: vertical; }
   .bar-row { grid-template-columns: 90px 1fr 28px; }
   .adjust-tools { grid-template-columns: 1fr; }
 }
+
+/* ─── Galerie-Ansichten ───────────────────────────────────────── */
+
+/* View-Mode Controls (ersetzt die alten density-Buttons) */
+.gallery-meta { flex-wrap: wrap; gap: 10px; }
+.view-mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.view-mode-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 1rem;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  transition: background .15s, border-color .15s;
+}
+.view-mode-btn.active,
+.view-mode-btn:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.cols-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.cols-icon { font-size: 1rem; }
+#cols-slider {
+  width: 72px;
+  cursor: pointer;
+  padding: 0;
+  accent-color: var(--primary);
+}
+#cols-value {
+  min-width: 14px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Basis: Spaltenanzahl via cols-N ── */
+#gallery-grid.cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+#gallery-grid.cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+#gallery-grid.cols-4 { grid-template-columns: repeat(4, 1fr) !important; }
+#gallery-grid.cols-5 { grid-template-columns: repeat(5, 1fr) !important; }
+#gallery-grid.cols-6 { grid-template-columns: repeat(6, 1fr) !important; }
+#gallery-grid.cols-7 { grid-template-columns: repeat(7, 1fr) !important; }
+#gallery-grid.cols-8 { grid-template-columns: repeat(8, 1fr) !important; }
+
+/* ── Kompakt: kleinerer Gap ── */
+#gallery-grid.view-compact { gap: 8px !important; }
+#gallery-grid.view-compact .photo-card { border-radius: 4px; }
+#gallery-grid.view-compact .photo-info h3 { font-size: 0.85rem; }
+#gallery-grid.view-compact .photo-info p  { font-size: 0.74rem; }
+
+/* ── Pure: nur Bilder, kein Text, kein Padding ── */
+#gallery-grid.view-pure {
+  gap: 3px !important;
+  padding: 0;
+}
+#gallery-grid.view-pure .photo-card {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+#gallery-grid.view-pure .photo-open {
+  aspect-ratio: 1 / 1;
+}
+
+/* ── Liste: ein Eintrag pro Zeile, Bild links ── */
+#gallery-grid.view-list {
+  grid-template-columns: 1fr !important;
+  gap: 8px;
+}
+#gallery-grid.view-list .photo-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+#gallery-grid.view-list .photo-open {
+  width: 110px;
+  min-width: 110px;
+  aspect-ratio: 4 / 3;
+  flex-shrink: 0;
+  border-radius: 0;
+}
+#gallery-grid.view-list .photo-info { flex: 1; padding: 10px 12px 4px; }
+#gallery-grid.view-list .photo-info h3 { white-space: normal; max-width: none; }
+#gallery-grid.view-list .tag-row { padding: 0 12px 6px; }
+#gallery-grid.view-list .card-actions {
+  display: flex;
+  flex-direction: column;
+  border-top: none;
+  border-left: 1px solid var(--line);
+  min-width: 38px;
+}
+#gallery-grid.view-list .card-btn { border: none; border-bottom: 1px solid var(--line); flex: 1; font-size: 0.75rem; padding: 4px; }
+#gallery-grid.view-list .card-btn:last-child { border-bottom: none; }
+
+/* ── Masonry: CSS columns ── */
+#gallery-grid.view-masonry {
+  display: block !important;
+  columns: 3;
+  column-gap: 12px;
+}
+#gallery-grid.view-masonry.cols-2 { columns: 2; }
+#gallery-grid.view-masonry.cols-3 { columns: 3; }
+#gallery-grid.view-masonry.cols-4 { columns: 4; }
+#gallery-grid.view-masonry.cols-5 { columns: 5; }
+#gallery-grid.view-masonry.cols-6 { columns: 6; }
+#gallery-grid.view-masonry.cols-7 { columns: 7; }
+#gallery-grid.view-masonry.cols-8 { columns: 8; }
+#gallery-grid.view-masonry .photo-card {
+  break-inside: avoid;
+  margin-bottom: 12px;
+  display: block;
+}
+#gallery-grid.view-masonry .photo-open { aspect-ratio: unset; height: auto; }
+#gallery-grid.view-masonry .photo-open img { height: auto; object-fit: cover; }
+
+/* ─── Seitennavigation (seitliche Pfeile) ─────────────────────── */
+#side-nav {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 500;
+}
+#side-nav button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(23, 37, 32, 0.65);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+  transition: background .18s, transform .15s;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+#side-nav button:hover {
+  background: rgba(23, 37, 32, 0.92);
+  transform: scale(1.1);
+}
+
+/* Mobile Anpassungen */
+@media (max-width: 680px) {
+  #side-nav { right: 8px; }
+  #side-nav button { width: 36px; height: 36px; font-size: 15px; }
+  #gallery-grid.cols-5,
+  #gallery-grid.cols-6,
+  #gallery-grid.cols-7,
+  #gallery-grid.cols-8 { grid-template-columns: repeat(3, 1fr) !important; }
+  #gallery-grid.view-masonry.cols-5,
+  #gallery-grid.view-masonry.cols-6,
+  #gallery-grid.view-masonry.cols-7,
+  #gallery-grid.view-masonry.cols-8 { columns: 3; }
+  .cols-control { display: none; }
+  #cols-slider { width: 56px; }
+}
