@@ -445,6 +445,47 @@ function bindEvents() {
     render();
   });
   updateCloudStatus();
+
+  // ── Sidebar Timeline-Toggle ──────────────────────────────────────
+  const tlToggle = $("#timeline-toggle");
+  if (tlToggle) {
+    tlToggle.addEventListener("click", () => {
+      const tree = $("#timeline-tree");
+      const expanded = tlToggle.getAttribute("aria-expanded") !== "false";
+      tlToggle.setAttribute("aria-expanded", String(!expanded));
+      tree.style.display = expanded ? "none" : "";
+      const arrow = tlToggle.querySelector(".toggle-arrow");
+      if (arrow) arrow.textContent = expanded ? "▸" : "▾";
+    });
+  }
+
+  // ── Swipe auf dem Detail-Panel (iPhone) ─────────────────────────
+  const detailPanel = $("#detail-panel");
+  let dtStartX = 0, dtStartY = 0, dtSwiping = false;
+  detailPanel.addEventListener("touchstart", (e) => {
+    const tag = e.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON") return;
+    dtStartX = e.touches[0].clientX;
+    dtStartY = e.touches[0].clientY;
+    dtSwiping = false;
+  }, { passive: true });
+  detailPanel.addEventListener("touchmove", (e) => {
+    if (!dtStartX) return;
+    const dx = e.touches[0].clientX - dtStartX;
+    const dy = e.touches[0].clientY - dtStartY;
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      dtSwiping = true;
+      e.preventDefault();
+    }
+  }, { passive: false });
+  detailPanel.addEventListener("touchend", (e) => {
+    if (!dtSwiping || !dtStartX) { dtStartX = 0; return; }
+    const dx = e.changedTouches[0].clientX - dtStartX;
+    const dy = e.changedTouches[0].clientY - dtStartY;
+    dtStartX = 0; dtSwiping = false;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    detailNavigate(dx < 0 ? +1 : -1);
+  }, { passive: true });
 }
 
 function updateSortDirButton() {
