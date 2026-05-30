@@ -311,48 +311,144 @@ textarea { resize: vertical; }
 
 /* ─── Lightbox ─────────────────────────────────────────────── */
 .lightbox {
-  position: fixed; inset: 0; z-index: 1000;
-  background: rgba(0,0,0,.92);
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; gap: 12px;
+  /* Safari iPhone: position fixed + top/left/right/bottom statt inset */
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  /* dvh = dynamic viewport height (korrekt auf Safari iOS 16+),
+     fallback auf 100% für ältere Safari */
+  height: 100%;
+  height: 100dvh;
+  z-index: 1000;
+  background: rgba(0,0,0,.93);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  gap: 12px;
+  /* Verhindert Bounce-Scroll auf iOS durch die Lightbox hindurch */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: auto;
+  /* Swipe-Gesten sollen horizontal funktionieren */
+  touch-action: pan-y;
 }
 .lightbox-img-wrap {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  max-height: calc(100vh - 120px); width: 100%;
+  -webkit-flex: 1;
+  flex: 1;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  width: 100%;
+  /* Begrenzung ohne 100vh-Bug: Abzug für Caption + Button-Bereich */
+  max-height: calc(100% - 110px);
+  overflow: hidden;
 }
 .lightbox-img-wrap img {
-  max-width: 90vw; max-height: calc(100vh - 120px);
-  object-fit: contain; border-radius: 6px;
+  max-width: 92vw;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
   box-shadow: 0 8px 40px rgba(0,0,0,.6);
+  /* Kein Text-Select / Callout auf iOS */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  /* Bild selbst soll nicht scrollen, nur horizontal swipeable */
+  touch-action: pan-y;
+  display: block;
 }
 .lightbox-close {
-  position: absolute; top: 16px; right: 20px;
-  background: none; border: none; color: #fff;
-  font-size: 28px; cursor: pointer; line-height: 1; padding: 8px;
-  opacity: .8; transition: opacity .15s;
+  position: absolute;
+  /* safe-area-inset für iPhone Notch / Dynamic Island */
+  top: max(16px, env(safe-area-inset-top, 16px));
+  right: max(20px, env(safe-area-inset-right, 20px));
+  background: rgba(0,0,0,.45);
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 10px;
+  border-radius: 50%;
+  opacity: .9;
+  transition: opacity .15s;
+  /* Großes Tap-Target für iPhone */
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
 }
 .lightbox-close:hover { opacity: 1; }
 .lightbox-nav {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  background: rgba(255,255,255,.12); border: none; color: #fff;
-  font-size: 52px; cursor: pointer; padding: 8px 18px;
-  border-radius: 6px; line-height: 1; transition: background .15s;
+  position: absolute;
+  top: 50%;
+  -webkit-transform: translateY(-50%);
+  transform: translateY(-50%);
+  background: rgba(255,255,255,.14);
+  border: none;
+  color: #fff;
+  font-size: 44px;
+  cursor: pointer;
+  /* Großes Tap-Target für iPhone */
+  min-width: 52px;
+  min-height: 80px;
+  padding: 0 14px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background .15s;
+  -webkit-user-select: none;
   user-select: none;
+  display: grid;
+  place-items: center;
 }
-.lightbox-nav:hover { background: rgba(255,255,255,.25); }
-.lightbox-prev { left: 12px; }
-.lightbox-next { right: 12px; }
+.lightbox-nav:hover,
+.lightbox-nav:active { background: rgba(255,255,255,.3); }
+.lightbox-prev { left: 10px; }
+.lightbox-next { right: 10px; }
 .lightbox-caption {
-  color: rgba(255,255,255,.8); font-size: 14px; text-align: center;
-  padding: 0 80px;
+  color: rgba(255,255,255,.8);
+  font-size: 13px;
+  text-align: center;
+  padding: 0 70px;
+  line-height: 1.4;
+  max-width: 100%;
+  word-break: break-word;
 }
 .lightbox-detail-btn {
-  position: absolute; bottom: 18px; right: 20px;
-  background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
-  color: #fff; padding: 7px 14px; border-radius: 8px;
-  cursor: pointer; font-size: 13px; transition: background .15s;
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  right: max(20px, env(safe-area-inset-right, 20px));
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.3);
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .15s;
+  min-height: 44px;
 }
-.lightbox-detail-btn:hover { background: rgba(255,255,255,.28); }
+.lightbox-detail-btn:hover,
+.lightbox-detail-btn:active { background: rgba(255,255,255,.28); }
+
+/* ── iPhone: Nav-Pfeile auf Mobile kleiner / halbtransparent ── */
+@media (max-width: 480px) {
+  .lightbox-nav {
+    font-size: 32px;
+    min-width: 44px;
+    padding: 0 10px;
+    opacity: 0.7;
+  }
+  .lightbox-caption { padding: 0 50px; font-size: 12px; }
+}
 
 @media (max-width: 980px) {
   .app-shell { grid-template-columns: 1fr; }
