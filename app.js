@@ -891,7 +891,10 @@ function renderGallery() {
     node.querySelector("h3").textContent = photo.title || photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
-    node.querySelector(".photo-open").addEventListener("click", () => openDetail(photo.id));
+    node.querySelector(".photo-open").addEventListener("click", () => {
+      if (state.galleryView === "pure") openLightbox(photo.id);
+      else openDetail(photo.id);
+    });
     node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
     node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".card-delete").addEventListener("click", async () => {
@@ -1258,10 +1261,42 @@ document.addEventListener("DOMContentLoaded", () => {
     const photo = state.filtered[state.lightboxIndex];
     if (photo) { closeLightbox(); openDetail(photo.id); }
   });
+
+  // ── Tastaturnavigation ───────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     if ($("#lightbox").classList.contains("hidden")) return;
-    if (e.key === "ArrowLeft") $("#lightbox-prev").click();
-    if (e.key === "ArrowRight") $("#lightbox-next").click();
-    if (e.key === "Escape") closeLightbox();
+    if (e.key === "ArrowLeft")  { $("#lightbox-prev").click(); }
+    if (e.key === "ArrowRight") { $("#lightbox-next").click(); }
+    if (e.key === "Escape")     { closeLightbox(); }
+  });
+
+  // ── Touch-Swipe für iPhone / Android ────────────────────────────
+  let touchStartX = 0;
+  let touchStartY = 0;
+  const lb = $("#lightbox");
+
+  lb.addEventListener("touchstart", (e) => {
+    touchStartX = e.changedTouches[0].clientX;
+    touchStartY = e.changedTouches[0].clientY;
+  }, { passive: true });
+
+  lb.addEventListener("touchend", (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    // Nur horizontal auswerten wenn Swipe eindeutig waagerecht ist
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0) {
+      // Swipe links → nächstes Bild
+      state.lightboxIndex = (state.lightboxIndex + 1) % state.filtered.length;
+    } else {
+      // Swipe rechts → vorheriges Bild
+      state.lightboxIndex = (state.lightboxIndex - 1 + state.filtered.length) % state.filtered.length;
+    }
+    showLightboxPhoto();
+  }, { passive: true });
+
+  // Hintergrund-Klick (nicht auf Bild) schließt Lightbox
+  lb.addEventListener("click", (e) => {
+    if (e.target === lb || e.target.classList.contains("lightbox-img-wrap")) closeLightbox();
   });
 });
