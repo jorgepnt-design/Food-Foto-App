@@ -359,7 +359,23 @@ function bindEvents() {
   $("#file-input").addEventListener("change", (e) => handleFiles(e.target.files));
   ["dragenter", "dragover"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.add("dragging"); }));
   ["dragleave", "drop"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.remove("dragging"); }));
-  drop.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("dragging");
+    // Versuche zuerst items (unterstützt auch iCloud/externe Apps)
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      const files = [];
+      for (const item of e.dataTransfer.items) {
+        if (item.kind === "file") {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length > 0) { handleFiles(files); return; }
+    }
+    // Fallback: files direkt
+    handleFiles(e.dataTransfer.files);
+  });
 
   $("#close-detail").addEventListener("click", closeDetail);
   $("#detail-prev").addEventListener("click", () => detailNavigate(-1));
@@ -995,8 +1011,14 @@ async function uploadEditedImageToCloud(blob, photo) {
 // ─── Image helpers ────────────────────────────────────────────────
 
 function isSupportedImageFile(file) {
+  const type = (file.type || "").toLowerCase();
   const name = (file.name || "").toLowerCase();
-  return (file.type || "").startsWith("image/") || name.endsWith(".heic") || name.endsWith(".heif");
+  const imageExts = [".jpg",".jpeg",".png",".gif",".webp",".heic",".heif",".avif",".bmp",".tiff",".tif"];
+  if (type.startsWith("image/")) return true;
+  if (imageExts.some((ext) => name.endsWith(ext))) return true;
+  // iCloud-Fotos: manchmal kein MIME-Type, aber file.kind === "file"
+  if (!type && file.size > 0 && !name.includes(".")) return true; // unbekannte Datei mit Inhalt
+  return false;
 }
 
 function normalizeImageType(type) {
