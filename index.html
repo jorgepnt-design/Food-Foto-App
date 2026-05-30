@@ -80,11 +80,19 @@
               <option value="name">Name</option>
               <option value="category">Kategorie</option>
             </select>
-            <button id="sort-dir" class="sort-dir-btn" title="Sortierrichtung umkehren">↓ Neu</button>
+            <button id="sort-dir" class="sort-dir-btn" title="Sortierrichtung umkehren">↓ Neu→Alt</button>
           </div>
-          <div class="density-toggle" role="group" aria-label="Galeriedichte">
-            <button class="density active" data-density="comfortable">▦</button>
-            <button class="density" data-density="compact">▥</button>
+          <div class="view-mode-controls" role="group" aria-label="Galerieansicht">
+            <button class="view-mode-btn active" data-view="grid"    title="Raster mit Info">▦</button>
+            <button class="view-mode-btn"         data-view="compact" title="Kompakt, viele Bilder">▥</button>
+            <button class="view-mode-btn"         data-view="pure"    title="Nur Bilder">🖼</button>
+            <button class="view-mode-btn"         data-view="list"    title="Liste">☰</button>
+            <button class="view-mode-btn"         data-view="masonry" title="Masonry">⧉</button>
+            <span class="cols-control" title="Spalten pro Zeile">
+              <span class="cols-icon">⊞</span>
+              <input type="range" id="cols-slider" min="2" max="8" value="3" step="1" />
+              <span id="cols-value">3</span>
+            </span>
           </div>
         </div>
 
@@ -236,7 +244,13 @@
     <button id="lightbox-detail" class="lightbox-detail-btn" title="Details / Bearbeiten">✎ Details</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-1" onerror="document.body.classList.add('script-failed')"></script>
+  <!-- Seitennavigation -->
+  <div id="side-nav" aria-label="Seitennavigation">
+    <button id="nav-top" title="Ganz nach oben" onclick="window.scrollTo({top:0,behavior:'smooth'})">▲</button>
+    <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
+  </div>
+
+  <script src="app.js?v=foodporn-20260530-2" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
