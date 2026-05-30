@@ -66,6 +66,7 @@ const state = {
   quick: "all",
   lang: safeGet("foodporn-lang") || safeGet("mealvault-lang") || "de",
   selectedId: null,
+  detailIndex: 0,
   sortField: safeGet("foodporn-sort-field") || "date",
   sortDir: safeGet("foodporn-sort-dir") || "desc",
   galleryView: safeGet("foodporn-gallery-view") || "grid",
@@ -275,6 +276,8 @@ function bindEvents() {
   drop.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
 
   $("#close-detail").addEventListener("click", closeDetail);
+  $("#detail-prev").addEventListener("click", () => detailNavigate(-1));
+  $("#detail-next").addEventListener("click", () => detailNavigate(+1));
   $("#detail-form").addEventListener("submit", saveDetails);
   $("#favorite-toggle").addEventListener("click", toggleSelectedFavorite);
   $("#delete-photo").addEventListener("click", deleteSelected);
@@ -1006,6 +1009,20 @@ function openDetail(id) {
   const photo = state.photos.find((item) => item.id === id);
   if (!photo) return;
   state.selectedId = id;
+
+  // Position in der gefilterten Liste
+  const idx = state.filtered.findIndex((p) => p.id === id);
+  state.detailIndex = idx >= 0 ? idx : 0;
+
+  const posEl = $("#detail-position");
+  const n = state.filtered.length;
+  if (posEl) posEl.textContent = n > 1 ? `${state.detailIndex + 1} / ${n}` : "";
+  const hasSiblings = n > 1;
+  const prevBtn = $("#detail-prev");
+  const nextBtn = $("#detail-next");
+  if (prevBtn) prevBtn.style.visibility = hasSiblings ? "" : "hidden";
+  if (nextBtn) nextBtn.style.visibility = hasSiblings ? "" : "hidden";
+
   resetEditState();
   $("#detail-title").value = photo.title || "";
   $("#detail-description").value = photo.description || "";
@@ -1018,6 +1035,13 @@ function openDetail(id) {
   $("#detail-panel").classList.add("open");
   $("#detail-panel").setAttribute("aria-hidden", "false");
   drawSelectedImage();
+}
+
+function detailNavigate(dir) {
+  if (!state.filtered.length) return;
+  const n = state.filtered.length;
+  state.detailIndex = ((state.detailIndex || 0) + dir + n) % n;
+  openDetail(state.filtered[state.detailIndex].id);
 }
 
 function closeDetail() {
@@ -1442,11 +1466,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Tastaturnavigation ───────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
-    if ($("#lightbox").classList.contains("hidden")) return;
-    if (e.key === "Escape") { if (state.cropActive) toggleCropMode(false); else closeLightbox(); }
-    if (state.cropActive) return;
-    if (e.key === "ArrowLeft")  { $("#lightbox-prev").click(); }
-    if (e.key === "ArrowRight") { $("#lightbox-next").click(); }
+    const lightboxOpen = !$("#lightbox").classList.contains("hidden");
+    const detailOpen   = $("#detail-panel").classList.contains("open");
+
+    if (lightboxOpen) {
+      if (e.key === "Escape") { if (state.cropActive) toggleCropMode(false); else closeLightbox(); }
+      if (state.cropActive) return;
+      if (e.key === "ArrowLeft")  { $("#lightbox-prev").click(); }
+      if (e.key === "ArrowRight") { $("#lightbox-next").click(); }
+      return;
+    }
+
+    if (detailOpen) {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   { e.preventDefault(); detailNavigate(-1); }
+      if (e.key === "ArrowRight" || e.key === "ArrowDown")  { e.preventDefault(); detailNavigate(+1); }
+      if (e.key === "Escape") closeDetail();
+    }
   });
 
   // ── Touch-Swipe für iPhone / Android ────────────────────────────
