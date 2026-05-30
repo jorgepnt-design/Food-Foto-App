@@ -860,7 +860,10 @@ async function handleFiles(fileList) {
     uploadList.prepend(item);
     let dataUrl, buffer;
     try {
-      [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
+      // Sequenziell statt parallel — iOS Safari kann bei großen HEIC/JPEG
+      // Dateien unter Speicherdruck mit Promise.all einfrieren
+      buffer  = await readAsArrayBuffer(file);
+      dataUrl = await createLocalPreview(file);
     } catch (error) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
@@ -976,8 +979,12 @@ function getCloudObjectFileName(objectName) {
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
+    const timer = setTimeout(() => {
+      reader.abort();
+      reject(new Error("Datei konnte nicht gelesen werden (Timeout)"));
+    }, 30000);
+    reader.onload = () => { clearTimeout(timer); resolve(reader.result); };
+    reader.onerror = () => { clearTimeout(timer); reject(reader.error); };
     reader.readAsDataURL(file);
   });
 }
@@ -990,16 +997,28 @@ async function createLocalPreview(file) {
 function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
   return new Promise((resolve) => {
     const img = new Image();
+    // Timeout-Fallback: wenn img.onload nach 15s nicht feuert (iOS Safari Bug)
+    // → Original-DataUrl zurückgeben statt ewig hängen
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      resolve(dataUrl);
+    }, 15000);
     img.onload = () => {
-      const ratio = Math.min(1, maxEdge / Math.max(img.width, img.height));
-      if (ratio >= 1) { resolve(dataUrl); return; }
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(img.width * ratio));
-      canvas.height = Math.max(1, Math.round(img.height * ratio));
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL(type, quality));
+      clearTimeout(timer);
+      try {
+        const ratio = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        if (ratio >= 1) { resolve(dataUrl); return; }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * ratio));
+        canvas.height = Math.max(1, Math.round(img.height * ratio));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL(type, quality));
+      } catch {
+        resolve(dataUrl);
+      }
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => { clearTimeout(timer); resolve(dataUrl); };
     img.src = dataUrl;
   });
 }
@@ -1007,8 +1026,12 @@ function resizeDataUrl(dataUrl, maxEdge, type = "image/jpeg", quality = 0.84) {
 function readAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
+    const timer = setTimeout(() => {
+      reader.abort();
+      reject(new Error("Datei konnte nicht gelesen werden (Timeout)"));
+    }, 30000);
+    reader.onload = () => { clearTimeout(timer); resolve(reader.result); };
+    reader.onerror = () => { clearTimeout(timer); reject(reader.error); };
     reader.readAsArrayBuffer(file);
   });
 }
