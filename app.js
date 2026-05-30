@@ -456,6 +456,7 @@ function bindEvents() {
       tree.style.display = expanded ? "none" : "";
       const arrow = tlToggle.querySelector(".toggle-arrow");
       if (arrow) arrow.textContent = expanded ? "▸" : "▾";
+      if (!expanded) renderTimeline(); // Baum aufbauen wenn aufgeklappt
     });
   }
 
@@ -1196,6 +1197,7 @@ function render() {
   state.filtered = sortPhotos(filterPhotos());
   renderGallery();
   renderStats();
+  renderTimeline();
 }
 
 function filterPhotos() {
