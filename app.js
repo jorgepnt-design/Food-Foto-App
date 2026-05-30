@@ -236,53 +236,51 @@ function savePhoto(photo) {
 }
 
 function removePhoto(id) {
-  // Foto in Deleted-Liste eintragen bevor es aus der DB entfernt wird
+  // Foto-Objekt holen bevor es gelöscht wird
   const photo = state.photos.find((p) => p.id === id);
   if (photo) addToDeletedSet(photo);
 
-  if (!state.db) { state.photos = state.photos.filter((p) => p.id !== id); return Promise.resolve(); }
+  if (!state.db) {
+    state.photos = state.photos.filter((p) => p.id !== id);
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
     const request = tx("readwrite").delete(id);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    request.onerror  = () => reject(request.error);
   });
 }
 
-// Löscht ein Foto vollständig aus der Cloud:
-// 1. Physisch aus GCS (DELETE /api/photos?objectName=...)
-// 2. Metadaten + ID in __deleted__ Liste (DELETE /api/user-edits/:id)
-// Beide Aufrufe werden awaitet mit Retry wenn Render schläft.
-function deleteFromCloud(photo) {
-  // Komplett non-blocking: läuft im Hintergrund via setTimeout
-  // KEIN await, KEIN ensureServerAwake (würde UI blockieren)
-  setTimeout(() => _deleteFromCloudAsync(photo), 0);
+function removePhotoFromDb(id) {
+  // Nur DB — ohne deleted-Liste zu befüllen (für Sync-Bereinigung)
+  if (!state.db) {
+    state.photos = state.photos.filter((p) => p.id !== id);
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const request = tx("readwrite").delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror  = () => reject(request.error);
+  });
 }
 
-async function _deleteFromCloudAsync(photo) {
+// Cloud-Löschung: vollständig non-blocking, kein await
+function deleteFromCloud(photo) {
   const endpoint = getApiEndpoint();
   if (!endpoint || !photo) return;
-
-  // Kurze Timeouts — wenn Render schläft passiert nichts Schlimmes:
-  // die Deleted-Liste ist lokal bereits gesetzt, der Server wird
-  // beim nächsten Sync der das Foto eh nicht mehr zurückliefert
-
-  // 1. Physisch aus GCS löschen (best-effort)
+  // GCS-Objekt physisch löschen
   if (photo.cloudObject) {
-    fetch(`${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`, {
-      method: "DELETE",
-      signal: AbortController ? (() => { const c = new AbortController(); setTimeout(() => c.abort(), 8000); return c.signal; })() : undefined
-    }).catch(() => {});
+    fetch(`${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`,
+      { method: "DELETE" }).catch(() => {});
   }
-
-  // 2. ID in __deleted__ eintragen (best-effort)
-  const idsToDelete = [photo.id, photo.cloudObject].filter(Boolean);
-  for (const id of idsToDelete) {
-    fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      signal: AbortController ? (() => { const c = new AbortController(); setTimeout(() => c.abort(), 8000); return c.signal; })() : undefined
-    }).catch(() => {});
+  // In __deleted__ auf Server eintragen
+  const ids = [photo.id, photo.cloudObject].filter(Boolean);
+  for (const id of ids) {
+    fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
+      { method: "DELETE" }).catch(() => {});
   }
 }
+
 
 function setupCategorySelects() {
   $("#category-filter").innerHTML = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
@@ -862,46 +860,34 @@ async function handleFiles(fileList) {
     uploadList.prepend(item);
     let dataUrl, buffer;
     try {
-      // Sequenziell statt parallel — iOS Safari kann bei großen HEIC/JPEG
-      // Dateien unter Speicherdruck mit Promise.all einfrieren
       buffer  = await readAsArrayBuffer(file);
       dataUrl = await createLocalPreview(file);
     } catch (error) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
     }
-    // ── Duplikat-Check ─────────────────────────────────────────────
-    let hash = null;
-    try {
-      hash = await Promise.race([
-        fileHash(buffer),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("hash timeout")), 3000))
-      ]);
-    } catch { hash = null; }
-    if (hash) {
-      const duplicate = state.photos.find((p) => p.fileHash === hash);
-      if (duplicate) {
-        setUploadItemStatus(item, `⚠ Duplikat — bereits vorhanden als "${duplicate.title || duplicate.name}"`, true);
-        continue;
-      }
-    }
-    const exif = parseExif(buffer);
+    const exif    = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
-    const photo = {
+    const photo   = {
       id: generateUUID(), name: file.name, type: normalizeImageType(file.type),
       dataUrl, takenAt: created,
       camera: [exif.make, exif.model].filter(Boolean).join(" ") || "Unbekannt",
       category: suggestCategory(created), tags: suggestTags(file.name),
-      description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local",
-      fileHash: hash
+      description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local"
     };
     if (endpoint) {
       setUploadItemStatus(item, "Cloud-Upload...");
       try {
         const cloud = await uploadPhotoToCloud(file, photo);
-        if (cloud) { photo.storage = "gcs"; photo.cloudObject = cloud.objectName; photo.cloudUrl = cloud.url; delete photo.cloudError; }
+        if (cloud) {
+          photo.storage = "gcs";
+          photo.cloudObject = cloud.objectName;
+          photo.cloudUrl    = cloud.url;
+          delete photo.cloudError;
+        }
       } catch (error) {
-        photo.storage = "local"; photo.cloudError = error.message;
+        photo.storage    = "local";
+        photo.cloudError = error.message;
         setUploadItemStatus(item, "Cloud fehlgeschlagen — lokal gespeichert", true);
         item.title = `Cloud-Fehler: ${error.message}`;
         console.error("[Cloud-Upload]", file.name, error);
@@ -912,6 +898,7 @@ async function handleFiles(fileList) {
   render();
   switchView("gallery");
 }
+
 
 async function savePhotoBestEffort(photo, item) {
   try {
@@ -1186,10 +1173,11 @@ function renderGallery() {
     node.querySelector(".card-delete").addEventListener("click", async () => {
       if (state.batchMode) return;
       if (!confirm("Dieses Foto wirklich löschen?")) return;
-      await removePhoto(photo.id);
-      state.photos = state.photos.filter((item) => item.id !== photo.id);
+      const photoToDelete = photo;
+      await removePhoto(photoToDelete.id);
+      state.photos = state.photos.filter((item) => item.id !== photoToDelete.id);
       render();
-      deleteFromCloud(photo);
+      deleteFromCloud(photoToDelete);
     });
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
@@ -1314,14 +1302,13 @@ async function toggleSelectedFavorite() {
 async function deleteSelected() {
   const photo = getSelected();
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
-  // Lokal sofort entfernen
   await removePhoto(photo.id);
-  state.photos = state.photos.filter((item) => item.id !== photo.id);
+  state.photos = state.photos.filter((p) => p.id !== photo.id);
   render();
   closeDetail();
-  // Cloud-Löschung im Hintergrund (GCS + __deleted__ Liste)
   deleteFromCloud(photo);
 }
+
 
 // ─── Image Editing ───────────────────────────────────────────────
 
@@ -1936,19 +1923,21 @@ async function batchDelete() {
   if (!n) return;
   if (!confirm(`${n} Foto${n === 1 ? "" : "s"} wirklich löschen?`)) return;
 
-  const photosToDelete = Array.from(state.selectedIds)
+  const toDelete = Array.from(state.selectedIds)
     .map((id) => state.photos.find((p) => p.id === id))
     .filter(Boolean);
-  for (const photo of photosToDelete) {
+
+  for (const photo of toDelete) {
     await removePhoto(photo.id);
   }
   state.photos = state.photos.filter((p) => !state.selectedIds.has(p.id));
   batchCancel();
-  // Cloud-Löschung im Hintergrund
-  for (const photo of photosToDelete) {
+
+  for (const photo of toDelete) {
     deleteFromCloud(photo);
   }
 }
+
 
 // ═══════════════════════════════════════════════════════════════════
 // ─── FEATURE 5: Lightbox Crop-Tool ───────────────────────────────
@@ -2270,18 +2259,4 @@ async function cropRestoreOriginal() {
 // ─── Cloud User-Edit beim Löschen entfernen ───────────────────────
 // Verhindert dass gelöschte Metadaten beim nächsten Sync
 // auf einem anderen Gerät wieder auftauchen.
-function deleteCloudUserEdit(photo) {
-  const endpoint = getApiEndpoint();
-  if (!photo || !endpoint) return;
-  // Sowohl id als auch cloudObject löschen (fire-and-forget)
-  if (photo.id) {
-    fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.id)}`, {
-      method: "DELETE"
-    }, 10000).catch((e) => console.warn("[user-edits DELETE id]", e.message));
-  }
-  if (photo.cloudObject && photo.cloudObject !== photo.id) {
-    fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.cloudObject)}`, {
-      method: "DELETE"
-    }, 10000).catch((e) => console.warn("[user-edits DELETE cloudObject]", e.message));
-  }
-}
+
