@@ -66,6 +66,10 @@ const state = {
   quick: "all",
   lang: safeGet("foodporn-lang") || safeGet("mealvault-lang") || "de",
   selectedId: null,
+  sortField: safeGet("foodporn-sort-field") || "date",
+  sortDir: safeGet("foodporn-sort-dir") || "desc",
+  galleryView: safeGet("foodporn-gallery-view") || "grid",
+  galleryCols: parseInt(safeGet("foodporn-gallery-cols") || "3", 10),
   edit: { rotation: 0, filter: "none", cropSquare: false, flipH: false, flipV: false, brightness: 100, contrast: 100, saturation: 100 }
 };
 
@@ -166,7 +170,8 @@ function getAllPhotos() {
   if (!state.db) return Promise.resolve(state.photos.slice());
   return new Promise((resolve, reject) => {
     const request = tx().getAll();
-    request.onsuccess = () => resolve(request.result.sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt)));
+    // Keine Vorsortierung hier — Sortierung erfolgt in sortPhotos()
+    request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });
 }
@@ -209,6 +214,53 @@ function bindEvents() {
   ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
   $("#clear-filters").addEventListener("click", clearFilters);
   $$("[data-go-upload]").forEach((btn) => btn.addEventListener("click", () => switchView("upload")));
+
+  // ── Sortierung ───────────────────────────────────────────────────
+  const sortFieldEl = $("#sort-field");
+  const sortDirEl = $("#sort-dir");
+  if (sortFieldEl) {
+    sortFieldEl.value = state.sortField;
+    sortFieldEl.addEventListener("change", () => {
+      state.sortField = sortFieldEl.value;
+      safeSet("foodporn-sort-field", state.sortField);
+      render();
+    });
+  }
+  if (sortDirEl) {
+    updateSortDirButton();
+    sortDirEl.addEventListener("click", () => {
+      state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
+      safeSet("foodporn-sort-dir", state.sortDir);
+      updateSortDirButton();
+      render();
+    });
+  }
+
+  // ── Galerie-Ansicht ──────────────────────────────────────────────
+  $$(".view-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.galleryView = btn.dataset.view;
+      safeSet("foodporn-gallery-view", state.galleryView);
+      $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      applyGalleryView();
+    });
+  });
+
+  // ── Dichte-Slider ────────────────────────────────────────────────
+  const colsSlider = $("#cols-slider");
+  const colsValue = $("#cols-value");
+  if (colsSlider) {
+    colsSlider.value = state.galleryCols;
+    if (colsValue) colsValue.textContent = state.galleryCols;
+    colsSlider.addEventListener("input", () => {
+      state.galleryCols = parseInt(colsSlider.value, 10);
+      safeSet("foodporn-gallery-cols", state.galleryCols);
+      if (colsValue) colsValue.textContent = state.galleryCols;
+      applyGalleryView();
+    });
+  }
+
+  // ── Alte density-Buttons (Kompatibilität) ────────────────────────
   $$(".density").forEach((btn) => btn.addEventListener("click", () => {
     $$(".density").forEach((item) => item.classList.toggle("active", item === btn));
     $("#gallery-grid").classList.toggle("compact", btn.dataset.density === "compact");
@@ -265,6 +317,81 @@ function bindEvents() {
     render();
   });
   updateCloudStatus();
+}
+
+function updateSortDirButton() {
+  const btn = $("#sort-dir");
+  if (!btn) return;
+  btn.textContent = state.sortDir === "desc" ? "↓ Neu→Alt" : "↑ Alt→Neu";
+  const fieldLabels = { date: "Datum", year: "Jahr", uploaded: "Upload", name: "Name", category: "Kategorie" };
+  const label = fieldLabels[state.sortField] || state.sortField;
+  btn.title = `Sortierung: ${label} ${state.sortDir === "desc" ? "absteigend" : "aufsteigend"} — klicken zum Umkehren`;
+}
+
+// ─── Sortierung ───────────────────────────────────────────────────────────────
+
+function getSortValue(photo, field) {
+  switch (field) {
+    case "date": {
+      const raw = photo.takenAt || photo.exifDate || photo.createdAt || null;
+      if (!raw) return 0;
+      const ts = typeof raw === "number" ? raw : new Date(raw).getTime();
+      return isNaN(ts) ? 0 : ts;
+    }
+    case "year": {
+      const raw = photo.takenAt || photo.exifDate || photo.createdAt || null;
+      if (!raw) return 0;
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? 0 : d.getFullYear() * 100 + d.getMonth();
+    }
+    case "uploaded": {
+      const raw = photo.createdAt || photo.takenAt || null;
+      if (!raw) return 0;
+      const ts = new Date(raw).getTime();
+      return isNaN(ts) ? 0 : ts;
+    }
+    case "name":
+      return (photo.title || photo.name || "").toLowerCase();
+    case "category":
+      return (photo.category || "").toLowerCase();
+    default:
+      return 0;
+  }
+}
+
+function sortPhotos(photos) {
+  const { sortField, sortDir } = state;
+  const desc = sortDir === "desc";
+  return [...photos].sort((a, b) => {
+    const va = getSortValue(a, sortField);
+    const vb = getSortValue(b, sortField);
+    if (typeof va === "string") return desc ? vb.localeCompare(va, state.lang) : va.localeCompare(vb, state.lang);
+    return desc ? vb - va : va - vb;
+  });
+}
+
+// ─── Galerie-Ansicht ──────────────────────────────────────────────────────────
+
+function applyGalleryView() {
+  const grid = $("#gallery-grid");
+  if (!grid) return;
+
+  // Alle alten View- und Cols-Klassen entfernen
+  const classes = Array.from(grid.classList);
+  classes.forEach((c) => {
+    if (c.startsWith("view-") || c.startsWith("cols-")) grid.classList.remove(c);
+  });
+
+  grid.classList.add(`view-${state.galleryView}`);
+  grid.classList.add(`cols-${state.galleryCols}`);
+
+  // Aktiven View-Button markieren
+  $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === state.galleryView));
+
+  // "pure" Modus: Beschriftung in Cards ausblenden
+  $$(".photo-info, .tag-row, .card-actions").forEach((el) => {
+    el.style.display = state.galleryView === "pure" ? "none" : "";
+  });
 }
 
 function applyLanguage() {
@@ -634,12 +761,9 @@ function readAsArrayBuffer(file) {
 }
 
 // ── Lädt ein Bild als data:URL — auch von externen HTTPS-URLs ────
-// Nötig weil canvas.toDataURL() bei Cross-Origin-Bildern SecurityError wirft.
 function loadImageAsDataUrl(src) {
   return new Promise((resolve, reject) => {
-    // Wenn bereits data: URL → direkt zurückgeben
     if (src.startsWith("data:")) { resolve(src); return; }
-    // Externe URL → über fetch als Blob laden, dann als data: URL lesen
     fetch(src)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -727,7 +851,7 @@ function suggestTags(name) {
 // ─── Render / Gallery ────────────────────────────────────────────
 
 function render() {
-  state.filtered = filterPhotos();
+  state.filtered = sortPhotos(filterPhotos());
   renderGallery();
   renderStats();
 }
@@ -759,6 +883,7 @@ function renderGallery() {
   grid.innerHTML = "";
   $("#result-count").textContent = `${state.filtered.length} Foto${state.filtered.length === 1 ? "" : "s"}`;
   $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
+
   state.filtered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
     node.querySelector("img").src = getDisplayImageUrl(photo);
@@ -789,6 +914,9 @@ function renderGallery() {
     });
     grid.appendChild(node);
   });
+
+  // Galerie-View nach Render anwenden (damit neue Cards korrekt gestylt sind)
+  applyGalleryView();
 }
 
 function formatDate(iso) {
@@ -892,126 +1020,74 @@ function resetEditState() {
   $("#saturation-range").value = "100";
 }
 
-// Zeichnet das Bild auf den Canvas — lädt externe URLs zuerst als data: URL
-// um den CORS-SecurityError bei canvas.toDataURL() zu vermeiden.
 async function drawSelectedImage() {
   const photo = getSelected();
   if (!photo) return;
 
-  let src = photo.dataUrl;
+  const canvas = $("#edit-canvas");
+  const ctx = canvas.getContext("2d");
+  const { rotation, filter, cropSquare, flipH, flipV, brightness, contrast, saturation } = state.edit;
 
-  // Cloud-Foto: noch keine lokale data: URL → extern laden
-  if (!src || !src.startsWith("data:")) {
-    const canvas = $("#edit-canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = 300; canvas.height = 200;
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(0, 0, 300, 200);
-    ctx.fillStyle = "#666";
-    ctx.textAlign = "center";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("Bild wird geladen...", 150, 105);
-
-    try {
-      src = await loadImageAsDataUrl(photo.cloudUrl || photo.dataUrl);
-      // data: URL lokal speichern damit nächstes Öffnen sofort klappt
-      photo.dataUrl = src;
-      await savePhoto(photo);
-    } catch (error) {
-      ctx.fillStyle = "#c0392b";
-      ctx.fillText(`Ladefehler: ${error.message}`, 150, 105);
-      console.error("[drawSelectedImage] Bild laden fehlgeschlagen:", error);
-      return;
-    }
-  }
+  let src;
+  try { src = await loadImageAsDataUrl(getDisplayImageUrl(photo)); }
+  catch { src = getDisplayImageUrl(photo); }
 
   const img = new Image();
   img.onload = () => {
-    const canvas = $("#edit-canvas");
-    const ctx = canvas.getContext("2d");
-    const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
-    const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
-    const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
-    const sw = sourceSize || img.width;
-    const sh = sourceSize || img.height;
-    const rotated = Math.abs(state.edit.rotation % 180) === 90;
-    canvas.width = rotated ? sh : sw;
-    canvas.height = rotated ? sw : sh;
+    const rad = (rotation * Math.PI) / 180;
+    const sin = Math.abs(Math.sin(rad));
+    const cos = Math.abs(Math.cos(rad));
+    let w = img.width * cos + img.height * sin;
+    let h = img.width * sin + img.height * cos;
+    if (cropSquare) { const s = Math.min(w, h); w = s; h = s; }
+    canvas.width = w; canvas.height = h;
     ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((state.edit.rotation * Math.PI) / 180);
-    ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
-    ctx.filter = buildCanvasFilter();
-    ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+    ctx.translate(w / 2, h / 2);
+    if (flipH) ctx.scale(-1, 1);
+    if (flipV) ctx.scale(1, -1);
+    ctx.rotate(rad);
+    ctx.drawImage(img, -img.width / 2, -img.height / 2);
     ctx.restore();
+    const filters = [];
+    if (brightness !== 100) filters.push(`brightness(${brightness}%)`);
+    if (contrast !== 100) filters.push(`contrast(${contrast}%)`);
+    if (saturation !== 100) filters.push(`saturate(${saturation}%)`);
+    if (filter === "warm") filters.push("sepia(30%) saturate(130%)");
+    if (filter === "mono") filters.push("grayscale(100%)");
+    if (filters.length) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.style.filter = filters.join(" ");
+      ctx.putImageData(imageData, 0, 0);
+    } else { canvas.style.filter = ""; }
   };
-  img.onerror = () => console.error("[drawSelectedImage] img.onload fehlgeschlagen");
   img.src = src;
-}
-
-function buildCanvasFilter() {
-  const filters = [`brightness(${state.edit.brightness}%)`, `contrast(${state.edit.contrast}%)`, `saturate(${state.edit.saturation}%)`];
-  if (state.edit.filter === "warm") filters.push("sepia(18%)", "saturate(118%)");
-  if (state.edit.filter === "mono") filters.push("grayscale(100%)", "contrast(108%)");
-  return filters.join(" ");
 }
 
 async function saveEditedImage() {
   const photo = getSelected();
   if (!photo) return;
-
-  // Sicherstellen dass photo.dataUrl eine data: URL ist (nicht eine Cloud-URL)
-  if (!photo.dataUrl || !photo.dataUrl.startsWith("data:")) {
-    try {
-      photo.dataUrl = await loadImageAsDataUrl(photo.cloudUrl || photo.dataUrl);
-    } catch (error) {
-      alert(`Bild konnte nicht geladen werden: ${error.message}`);
-      return;
-    }
-  }
-
   const canvas = $("#edit-canvas");
-
-  // Canvas neu zeichnen mit aktueller data: URL
-  await new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const sourceSize = state.edit.cropSquare ? Math.min(img.width, img.height) : null;
-      const sx = sourceSize ? (img.width - sourceSize) / 2 : 0;
-      const sy = sourceSize ? (img.height - sourceSize) / 2 : 0;
-      const sw = sourceSize || img.width;
-      const sh = sourceSize || img.height;
-      const rotated = Math.abs(state.edit.rotation % 180) === 90;
-      canvas.width = rotated ? sh : sw;
-      canvas.height = rotated ? sw : sh;
-      const ctx = canvas.getContext("2d");
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((state.edit.rotation * Math.PI) / 180);
-      ctx.scale(state.edit.flipH ? -1 : 1, state.edit.flipV ? -1 : 1);
-      ctx.filter = buildCanvasFilter();
-      ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
-      ctx.restore();
-      resolve();
-    };
-    img.onerror = resolve;
-    img.src = photo.dataUrl;
-  });
-
-  photo.dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
-  photo.editedAt = new Date().toISOString();
-
-  if (getApiEndpoint()) {
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, photo.type || "image/jpeg", 0.92));
-    try {
-      const cloud = await uploadEditedImageToCloud(blob, photo);
-      if (cloud) { photo.storage = "gcs"; photo.cloudObject = cloud.objectName; photo.cloudUrl = cloud.url; delete photo.cloudError; }
-    } catch (error) {
-      photo.cloudError = error.message;
-      console.error("[Cloud-Upload bearbeitetes Bild]", error);
-    }
+  const filterStr = canvas.style.filter || "";
+  let dataUrl;
+  if (filterStr) {
+    const offscreen = document.createElement("canvas");
+    offscreen.width = canvas.width; offscreen.height = canvas.height;
+    const offCtx = offscreen.getContext("2d");
+    offCtx.filter = filterStr;
+    offCtx.drawImage(canvas, 0, 0);
+    dataUrl = offscreen.toDataURL(photo.type || "image/jpeg", 0.9);
+  } else {
+    dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.9);
   }
-
+  photo.dataUrl = dataUrl;
+  photo.editedAt = new Date().toISOString();
+  if (photo.cloudObject && getApiEndpoint()) {
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const cloud = await uploadEditedImageToCloud(blob, photo);
+      if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
+    } catch (e) { console.warn("[Cloud-Edit-Upload]", e.message); }
+  }
   await savePhoto(photo);
   state.photos = await getAllPhotos();
   resetEditState();
