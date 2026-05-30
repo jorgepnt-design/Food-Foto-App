@@ -81,7 +81,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 // crypto.randomUUID: erst ab iOS 15.4 — Fallback für ältere Geräte
 function generateUUID() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return generateUUID();
+    return crypto.randomUUID();
   }
   // Fallback: RFC4122 v4 UUID
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
