@@ -10,7 +10,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260529-2" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260529-2" />
   <link rel="manifest" href="site.webmanifest?v=foodporn-20260529-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-6" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-7" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -192,7 +192,15 @@
   </div>
 
   <aside id="detail-panel" class="detail-panel" aria-hidden="true">
-    <div class="detail-header"><h2 data-i18n="details">Details</h2><button id="close-detail" class="icon-button" title="Schließen">×</button></div>
+    <div class="detail-header">
+      <button id="detail-prev" class="icon-button detail-nav-btn" title="Vorheriges Bild (←)">‹</button>
+      <div class="detail-header-center">
+        <h2 data-i18n="details">Details</h2>
+        <span id="detail-position" class="detail-position"></span>
+      </div>
+      <button id="detail-next" class="icon-button detail-nav-btn" title="Nächstes Bild (→)">›</button>
+      <button id="close-detail" class="icon-button" title="Schließen">×</button>
+    </div>
     <div class="image-editor">
       <canvas id="edit-canvas"></canvas>
       <div class="edit-tools">
@@ -297,7 +305,7 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-6" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260530-7" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
