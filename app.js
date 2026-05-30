@@ -1463,6 +1463,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("#crop-apply").addEventListener("click", applyCrop);
   $("#crop-cancel").addEventListener("click", () => toggleCropMode(false));
+  $("#crop-undo").addEventListener("click", cropUndo);
+  $("#crop-original").addEventListener("click", cropRestoreOriginal);
 
   // ── Tastaturnavigation ───────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
@@ -1725,20 +1727,36 @@ async function batchDelete() {
 // ═══════════════════════════════════════════════════════════════════
 
 // Crop-State
-Object.assign(state, { cropActive: false, cropRatio: "free" });
+Object.assign(state, { cropActive: false, cropRatio: "free", cropHistory: [] });
 
 function toggleCropMode(forceOff) {
   const on = forceOff === false ? false : !state.cropActive;
   state.cropActive = on;
-  const overlay  = $("#crop-overlay");
-  const cropBar  = $("#lightbox-crop-bar");
+  const overlay   = $("#crop-overlay");
+  const cropBar   = $("#lightbox-crop-bar");
   const toggleBtn = $("#lightbox-crop-toggle");
   overlay.classList.toggle("hidden", !on);
   cropBar.classList.toggle("hidden", !on);
   toggleBtn.classList.toggle("lb-action-active", on);
   // Nav-Pfeile ausblenden während Crop
   $$(".lightbox-nav").forEach((b) => b.style.visibility = on ? "hidden" : "");
-  if (on) updateCropFrame();
+  if (on) {
+    updateCropFrame();
+    updateCropHistoryButtons();
+  }
+}
+
+function updateCropHistoryButtons() {
+  const photo = state.filtered[state.lightboxIndex];
+  const undoBtn     = $("#crop-undo");
+  const originalBtn = $("#crop-original");
+  if (!undoBtn || !originalBtn) return;
+  const hasHistory  = photo && photo.cropHistory && photo.cropHistory.length > 0;
+  const hasOriginal = photo && !!photo.originalDataUrl;
+  undoBtn.disabled     = !hasHistory;
+  originalBtn.disabled = !hasOriginal;
+  undoBtn.style.opacity     = hasHistory  ? "1" : "0.4";
+  originalBtn.style.opacity = hasOriginal ? "1" : "0.4";
 }
 
 function updateCropFrame() {
@@ -1876,6 +1894,17 @@ async function applyCrop() {
   canvas.getContext("2d").drawImage(srcImg, cx, cy, cw, ch, 0, 0, cw, ch);
 
   const dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
+
+  // ── Undo-History ───────────────────────────────────────────────
+  // Beim allerersten Crop: Original sichern
+  if (!photo.originalDataUrl) {
+    photo.originalDataUrl = getDisplayImageUrl(photo);
+  }
+  // Aktuellen Stand in Undo-Stack schieben (max. 10 Schritte)
+  if (!photo.cropHistory) photo.cropHistory = [];
+  photo.cropHistory.push(getDisplayImageUrl(photo));
+  if (photo.cropHistory.length > 10) photo.cropHistory.shift();
+
   photo.dataUrl  = dataUrl;
   photo.editedAt = new Date().toISOString();
 
@@ -1959,3 +1988,51 @@ function showLightboxToast(msg) {
 // ═══════════════════════════════════════════════════════════════════
 // (Dark Mode ist vollständig über @media prefers-color-scheme in
 // styles.css gelöst — kein JS erforderlich)
+
+// ─── Crop Undo / Original ─────────────────────────────────────────
+
+async function cropUndo() {
+  const photo = state.filtered[state.lightboxIndex];
+  if (!photo || !photo.cropHistory || !photo.cropHistory.length) return;
+
+  const prevUrl = photo.cropHistory.pop();      // letzten Stand holen
+  photo.dataUrl  = prevUrl;
+  photo.editedAt = new Date().toISOString();
+
+  // Wenn History leer und originalDataUrl === aktueller Stand → original aufräumen
+  if (!photo.cropHistory.length && photo.originalDataUrl === prevUrl) {
+    delete photo.originalDataUrl;
+  }
+
+  await savePhoto(photo);
+  state.photos = await getAllPhotos();
+  showLightboxPhoto();              // Lightbox-Bild aktualisieren
+  updateCropHistoryButtons();
+  render();
+}
+
+async function cropRestoreOriginal() {
+  const photo = state.filtered[state.lightboxIndex];
+  if (!photo || !photo.originalDataUrl) return;
+  if (!confirm("Wirklich zum Original zurücksetzen? Alle Crop-Bearbeitungen werden verworfen.")) return;
+
+  photo.dataUrl     = photo.originalDataUrl;
+  photo.editedAt    = new Date().toISOString();
+  photo.cropHistory = [];
+  delete photo.originalDataUrl;
+
+  // Ggf. auch Cloud aktualisieren
+  if (photo.cloudObject && getApiEndpoint()) {
+    try {
+      const blob = await fetch(photo.dataUrl).then((r) => r.blob());
+      const cloud = await uploadEditedImageToCloud(blob, photo);
+      if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
+    } catch (e) { console.warn("[Crop-Original-Upload]", e); }
+  }
+
+  await savePhoto(photo);
+  state.photos = await getAllPhotos();
+  showLightboxPhoto();
+  updateCropHistoryButtons();
+  render();
+}
