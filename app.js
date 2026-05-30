@@ -96,6 +96,7 @@ async function init() {
   }
   setupCategorySelects();
   bindEvents();
+  restoreFilters();
   applyLanguage();
   try {
     state.db = await openDb();
@@ -208,10 +209,11 @@ function bindEvents() {
   $$(".quick-filter").forEach((btn) => btn.addEventListener("click", () => {
     state.quick = btn.dataset.quick;
     $$(".quick-filter").forEach((item) => item.classList.toggle("active", item === btn));
+    persistFilters();
     switchView("gallery");
     render();
   }));
-  ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", render));
+  ["search-input", "date-from", "date-to", "category-filter", "tag-filter"].forEach((id) => $(`#${id}`).addEventListener("input", () => { persistFilters(); render(); }));
   $("#clear-filters").addEventListener("click", clearFilters);
   $$("[data-go-upload]").forEach((btn) => btn.addEventListener("click", () => switchView("upload")));
 
@@ -424,8 +426,47 @@ function clearFilters() {
   $("#category-filter").value = "";
   $("#tag-filter").value = "";
   state.quick = "all";
+  state.timelineYear = null;
+  state.timelineMonth = null;
   $$(".quick-filter").forEach((item) => item.classList.toggle("active", item.dataset.quick === "all"));
+  persistFilters();
   render();
+}
+
+// ── Filter-Persistenz ────────────────────────────────────────────
+function persistFilters() {
+  try {
+    const f = {
+      q:     $("#search-input").value,
+      from:  $("#date-from").value,
+      to:    $("#date-to").value,
+      cat:   $("#category-filter").value,
+      tag:   $("#tag-filter").value,
+      quick: state.quick,
+      ty:    state.timelineYear,
+      tm:    state.timelineMonth
+    };
+    localStorage.setItem("foodporn-filters", JSON.stringify(f));
+  } catch {}
+}
+
+function restoreFilters() {
+  try {
+    const raw = localStorage.getItem("foodporn-filters");
+    if (!raw) return;
+    const f = JSON.parse(raw);
+    if (f.q)    $("#search-input").value = f.q;
+    if (f.from) $("#date-from").value    = f.from;
+    if (f.to)   $("#date-to").value      = f.to;
+    if (f.cat)  $("#category-filter").value = f.cat;
+    if (f.tag)  $("#tag-filter").value   = f.tag;
+    if (f.quick) {
+      state.quick = f.quick;
+      $$(".quick-filter").forEach((b) => b.classList.toggle("active", b.dataset.quick === f.quick));
+    }
+    if (f.ty != null) state.timelineYear  = f.ty;
+    if (f.tm != null) state.timelineMonth = f.tm;
+  } catch {}
 }
 
 // ─── Cloud Utilities ──────────────────────────────────────────────
@@ -605,6 +646,15 @@ function setUploadItemStatus(item, text, isError = false) {
   strong.style.color = isError ? "#c0392b" : "";
 }
 
+// Schneller Hash für Duplikat-Erkennung (erste 64KB + Dateigröße)
+async function fileHash(buffer) {
+  const slice = buffer.slice(0, 65536);
+  const hashBuf = await crypto.subtle.digest("SHA-256", slice);
+  const arr = Array.from(new Uint8Array(hashBuf));
+  return arr.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16)
+    + "_" + buffer.byteLength;
+}
+
 async function handleFiles(fileList) {
   const files = Array.from(fileList).filter(isSupportedImageFile);
   const uploadList = $("#upload-list");
@@ -629,6 +679,13 @@ async function handleFiles(fileList) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
     }
+    // ── Duplikat-Check ─────────────────────────────────────────────
+    const hash = await fileHash(buffer);
+    const duplicate = state.photos.find((p) => p.fileHash === hash);
+    if (duplicate) {
+      setUploadItemStatus(item, `⚠ Duplikat — bereits vorhanden als "${duplicate.title || duplicate.name}"`, true);
+      continue;
+    }
     const exif = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
     const photo = {
@@ -636,7 +693,8 @@ async function handleFiles(fileList) {
       dataUrl, takenAt: created,
       camera: [exif.make, exif.model].filter(Boolean).join(" ") || "Unbekannt",
       category: suggestCategory(created), tags: suggestTags(file.name),
-      description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local"
+      description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local",
+      fileHash: hash
     };
     if (endpoint) {
       setUploadItemStatus(item, "Cloud-Upload...");
@@ -1118,6 +1176,99 @@ function renderStats() {
   $("#stat-top-tag").textContent = topKey(tagCounts) || "-";
   renderBars("#category-bars", categoryCounts);
   renderBars("#tag-bars", tagCounts);
+  renderMonthlyChart();
+  renderHeatmap();
+}
+
+// ── Fotos pro Monat (letzte 24 Monate) ──────────────────────────
+function renderMonthlyChart() {
+  const box = $("#monthly-chart");
+  if (!box) return;
+  box.innerHTML = "";
+
+  const now = new Date();
+  const months = [];
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: "", count: 0 });
+  }
+  const mDE = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  months.forEach((m) => { m.label = `${mDE[m.month]} ${String(m.year).slice(2)}`; });
+
+  state.photos.forEach((p) => {
+    const d = new Date(p.takenAt);
+    if (isNaN(d)) return;
+    const entry = months.find((m) => m.year === d.getFullYear() && m.month === d.getMonth());
+    if (entry) entry.count++;
+  });
+
+  const max = Math.max(1, ...months.map((m) => m.count));
+  const wrap = document.createElement("div");
+  wrap.className = "monthly-bars";
+  months.forEach((m) => {
+    const col = document.createElement("div");
+    col.className = "monthly-col";
+    const h = Math.round((m.count / max) * 100);
+    col.innerHTML = `
+      <div class="monthly-bar-wrap">
+        <span class="monthly-val">${m.count || ""}</span>
+        <div class="monthly-bar" style="height:${h}%" title="${m.label}: ${m.count} Fotos"></div>
+      </div>
+      <span class="monthly-label">${m.label}</span>`;
+    wrap.appendChild(col);
+  });
+  box.appendChild(wrap);
+}
+
+// ── Heatmap: Wochentag × Tageszeit ──────────────────────────────
+function renderHeatmap() {
+  const box = $("#heatmap-chart");
+  if (!box) return;
+  box.innerHTML = "";
+
+  const days = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+  const slots = 6; // 4h-Blöcke: 0-4, 4-8, 8-12, 12-16, 16-20, 20-24
+  const slotLabels = ["0–4","4–8","8–12","12–16","16–20","20–24"];
+
+  // counts[weekday0=Mo][slot]
+  const counts = Array.from({ length: 7 }, () => new Array(slots).fill(0));
+  state.photos.forEach((p) => {
+    const d = new Date(p.takenAt);
+    if (isNaN(d)) return;
+    const wd = (d.getDay() + 6) % 7; // 0=Mo
+    const slot = Math.min(Math.floor(d.getHours() / 4), slots - 1);
+    counts[wd][slot]++;
+  });
+  const max = Math.max(1, ...counts.flat());
+
+  const table = document.createElement("div");
+  table.className = "heatmap-table";
+
+  // Header-Zeile
+  const header = document.createElement("div");
+  header.className = "heatmap-row heatmap-header";
+  header.innerHTML = `<span class="heatmap-day-label"></span>` +
+    slotLabels.map((l) => `<span class="heatmap-slot-label">${l}</span>`).join("");
+  table.appendChild(header);
+
+  days.forEach((day, di) => {
+    const row = document.createElement("div");
+    row.className = "heatmap-row";
+    row.innerHTML = `<span class="heatmap-day-label">${day}</span>`;
+    counts[di].forEach((c, si) => {
+      const pct = c / max;
+      const cell = document.createElement("span");
+      cell.className = "heatmap-cell";
+      cell.style.background = c === 0
+        ? "var(--surface-soft)"
+        : `rgba(47,111,99,${0.15 + pct * 0.85})`;
+      cell.title = `${day} ${slotLabels[si]} Uhr: ${c} Fotos`;
+      cell.textContent = c || "";
+      row.appendChild(cell);
+    });
+    table.appendChild(row);
+  });
+  box.appendChild(table);
 }
 
 function countBy(items, getter) {
@@ -1259,10 +1410,12 @@ function closeLightbox() {
 document.addEventListener("DOMContentLoaded", () => {
   $("#lightbox-close").addEventListener("click", closeLightbox);
   $("#lightbox-prev").addEventListener("click", () => {
+    if (state.cropActive) return; // keine Navigation während Crop
     state.lightboxIndex = (state.lightboxIndex - 1 + state.filtered.length) % state.filtered.length;
     showLightboxPhoto();
   });
   $("#lightbox-next").addEventListener("click", () => {
+    if (state.cropActive) return;
     state.lightboxIndex = (state.lightboxIndex + 1) % state.filtered.length;
     showLightboxPhoto();
   });
@@ -1271,12 +1424,29 @@ document.addEventListener("DOMContentLoaded", () => {
     if (photo) { closeLightbox(); openDetail(photo.id); }
   });
 
+  // ── Share aus Lightbox ───────────────────────────────────────────
+  $("#lightbox-share").addEventListener("click", shareLightboxPhoto);
+
+  // ── Crop-Toggle ──────────────────────────────────────────────────
+  $("#lightbox-crop-toggle").addEventListener("click", toggleCropMode);
+  $$(".crop-ratio-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      $$(".crop-ratio-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.cropRatio = btn.dataset.ratio;
+      updateCropFrame();
+    });
+  });
+  $("#crop-apply").addEventListener("click", applyCrop);
+  $("#crop-cancel").addEventListener("click", () => toggleCropMode(false));
+
   // ── Tastaturnavigation ───────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     if ($("#lightbox").classList.contains("hidden")) return;
+    if (e.key === "Escape") { if (state.cropActive) toggleCropMode(false); else closeLightbox(); }
+    if (state.cropActive) return;
     if (e.key === "ArrowLeft")  { $("#lightbox-prev").click(); }
     if (e.key === "ArrowRight") { $("#lightbox-next").click(); }
-    if (e.key === "Escape")     { closeLightbox(); }
   });
 
   // ── Touch-Swipe für iPhone / Android ────────────────────────────
@@ -1512,3 +1682,243 @@ async function batchDelete() {
   state.photos = state.photos.filter((p) => !state.selectedIds.has(p.id));
   batchCancel();
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FEATURE 5: Lightbox Crop-Tool ───────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+// Crop-State
+Object.assign(state, { cropActive: false, cropRatio: "free" });
+
+function toggleCropMode(forceOff) {
+  const on = forceOff === false ? false : !state.cropActive;
+  state.cropActive = on;
+  const overlay  = $("#crop-overlay");
+  const cropBar  = $("#lightbox-crop-bar");
+  const toggleBtn = $("#lightbox-crop-toggle");
+  overlay.classList.toggle("hidden", !on);
+  cropBar.classList.toggle("hidden", !on);
+  toggleBtn.classList.toggle("lb-action-active", on);
+  // Nav-Pfeile ausblenden während Crop
+  $$(".lightbox-nav").forEach((b) => b.style.visibility = on ? "hidden" : "");
+  if (on) updateCropFrame();
+}
+
+function updateCropFrame() {
+  const img   = $("#lightbox-img");
+  const frame = $("#crop-frame");
+  if (!img || !frame) return;
+  const iw = img.naturalWidth  || img.offsetWidth;
+  const ih = img.naturalHeight || img.offsetHeight;
+  const ratio = state.cropRatio;
+
+  // Startrahmen: 80% des Bildes, proportional
+  let fw, fh;
+  if (ratio === "free") {
+    fw = img.offsetWidth  * 0.8;
+    fh = img.offsetHeight * 0.8;
+  } else {
+    const [rw, rh] = ratio.split(":").map(Number);
+    const aspect = rw / rh;
+    fw = Math.min(img.offsetWidth * 0.85, img.offsetHeight * 0.85 * aspect);
+    fh = fw / aspect;
+  }
+  const ox = (img.offsetWidth  - fw) / 2;
+  const oy = (img.offsetHeight - fh) / 2;
+
+  frame.style.left   = ox + "px";
+  frame.style.top    = oy + "px";
+  frame.style.width  = fw + "px";
+  frame.style.height = fh + "px";
+
+  // Drag-Handles aktivieren
+  enableCropDrag(img, frame, ratio);
+}
+
+function enableCropDrag(img, frame, ratio) {
+  // Entfernt alte Listener durch Klonen
+  const newFrame = frame.cloneNode(true);
+  frame.parentNode.replaceChild(newFrame, frame);
+  const f = newFrame;
+
+  let dragging = false, resizing = false, resizeDir = "";
+  let startX, startY, startL, startT, startW, startH;
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const iw = img.offsetWidth, ih = img.offsetHeight;
+
+  const getAspect = () => {
+    if (ratio === "free") return null;
+    const [rw, rh] = ratio.split(":").map(Number);
+    return rw / rh;
+  };
+
+  f.addEventListener("mousedown", startDrag);
+  f.addEventListener("touchstart", (e) => startDrag(e.touches[0]), { passive: true });
+
+  function startDrag(e) {
+    const rect = f.getBoundingClientRect();
+    const ex = (e.clientX || e.pageX) - rect.left;
+    const ey = (e.clientY || e.pageY) - rect.top;
+    const edge = 18;
+    if (ex < edge && ey < edge)        { resizing = true; resizeDir = "nw"; }
+    else if (ex > rect.width - edge && ey < edge) { resizing = true; resizeDir = "ne"; }
+    else if (ex < edge && ey > rect.height - edge) { resizing = true; resizeDir = "sw"; }
+    else if (ex > rect.width - edge && ey > rect.height - edge) { resizing = true; resizeDir = "se"; }
+    else { dragging = true; }
+    startX = e.clientX || e.pageX; startY = e.clientY || e.pageY;
+    startL = parseFloat(f.style.left); startT = parseFloat(f.style.top);
+    startW = parseFloat(f.style.width); startH = parseFloat(f.style.height);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("touchmove", (ev) => onMove(ev.touches[0]), { passive: true });
+    document.addEventListener("mouseup",  endDrag);
+    document.addEventListener("touchend", endDrag);
+  }
+
+  function onMove(e) {
+    const dx = (e.clientX || e.pageX) - startX;
+    const dy = (e.clientY || e.pageY) - startY;
+    const asp = getAspect();
+    if (dragging) {
+      f.style.left = clamp(startL + dx, 0, iw - parseFloat(f.style.width))  + "px";
+      f.style.top  = clamp(startT + dy, 0, ih - parseFloat(f.style.height)) + "px";
+    } else if (resizing) {
+      let nw = startW, nh = startH, nl = startL, nt = startT;
+      if (resizeDir.includes("e")) nw = Math.max(40, startW + dx);
+      if (resizeDir.includes("s")) nh = Math.max(40, startH + dy);
+      if (resizeDir.includes("w")) { nw = Math.max(40, startW - dx); nl = startL + (startW - nw); }
+      if (resizeDir.includes("n")) { nh = Math.max(40, startH - dy); nt = startT + (startH - nh); }
+      if (asp) {
+        if (resizeDir.includes("e") || resizeDir.includes("w")) nh = nw / asp;
+        else nw = nh * asp;
+      }
+      nw = clamp(nw, 40, iw - nl);
+      nh = clamp(nh, 40, ih - nt);
+      f.style.left = clamp(nl, 0, iw - nw) + "px";
+      f.style.top  = clamp(nt, 0, ih - nh) + "px";
+      f.style.width  = nw + "px";
+      f.style.height = nh + "px";
+    }
+  }
+
+  function endDrag() {
+    dragging = false; resizing = false;
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup",  endDrag);
+  }
+}
+
+async function applyCrop() {
+  const photo = state.filtered[state.lightboxIndex];
+  if (!photo) return;
+
+  const img   = $("#lightbox-img");
+  const frame = $("#crop-frame");
+  if (!img || !frame) return;
+
+  // Skalierungsfaktor: img.offsetWidth → img.naturalWidth
+  const scaleX = img.naturalWidth  / img.offsetWidth;
+  const scaleY = img.naturalHeight / img.offsetHeight;
+
+  const cx = parseFloat(frame.style.left)   * scaleX;
+  const cy = parseFloat(frame.style.top)    * scaleY;
+  const cw = parseFloat(frame.style.width)  * scaleX;
+  const ch = parseFloat(frame.style.height) * scaleY;
+
+  // Bild als data:URL laden (auch für externe GCS-URLs)
+  let src;
+  try { src = await loadImageAsDataUrl(getDisplayImageUrl(photo)); }
+  catch { src = getDisplayImageUrl(photo); }
+
+  const srcImg = new Image();
+  await new Promise((res) => { srcImg.onload = res; srcImg.src = src; });
+
+  const canvas = document.createElement("canvas");
+  canvas.width  = Math.round(cw);
+  canvas.height = Math.round(ch);
+  canvas.getContext("2d").drawImage(srcImg, cx, cy, cw, ch, 0, 0, cw, ch);
+
+  const dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.92);
+  photo.dataUrl  = dataUrl;
+  photo.editedAt = new Date().toISOString();
+
+  // In Cloud hochladen
+  if (photo.cloudObject && getApiEndpoint()) {
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const cloud = await uploadEditedImageToCloud(blob, photo);
+      if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
+    } catch (e) { console.warn("[Crop-Upload]", e); }
+  }
+
+  await savePhoto(photo);
+  state.photos = await getAllPhotos();
+  toggleCropMode(false);
+  showLightboxPhoto(); // aktualisiertes Bild anzeigen
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FEATURE 11: Foto aus Lightbox teilen ────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+async function shareLightboxPhoto() {
+  const photo = state.filtered[state.lightboxIndex];
+  if (!photo) return;
+
+  const title = photo.title || photo.category || "Foodporn";
+  const text  = [photo.title, photo.description, (photo.tags || []).join(" ")].filter(Boolean).join(" · ");
+
+  // Web Share API mit Bild-Blob (iOS/Android)
+  if (navigator.share && navigator.canShare) {
+    try {
+      const src = getDisplayImageUrl(photo);
+      // Bild als Blob laden
+      const blob = await fetch(src).then((r) => {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.blob();
+      });
+      const file = new File([blob], photo.name || "food.jpg", { type: blob.type || "image/jpeg" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] });
+        return;
+      }
+    } catch (e) {
+      console.warn("[Share-Blob]", e.message);
+    }
+    // Fallback: nur URL teilen
+    try {
+      await navigator.share({ title, text, url: getDisplayImageUrl(photo) });
+      return;
+    } catch {}
+  }
+
+  // Desktop-Fallback: Bild-URL in Zwischenablage
+  try {
+    await navigator.clipboard.writeText(getDisplayImageUrl(photo));
+    showLightboxToast("🔗 Bild-URL kopiert");
+  } catch {
+    showLightboxToast("⚠ Teilen nicht verfügbar");
+  }
+}
+
+function showLightboxToast(msg) {
+  let toast = $("#lightbox-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "lightbox-toast";
+    toast.className = "lightbox-toast";
+    $("#lightbox").appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add("visible");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove("visible"), 2400);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FEATURE 8: Dark Mode (wird per CSS gesteuert, kein JS nötig)
+// ─── Nur: Toggle in Settings falls jemand manuell umschalten will
+// ═══════════════════════════════════════════════════════════════════
+// (Dark Mode ist vollständig über @media prefers-color-scheme in
+// styles.css gelöst — kein JS erforderlich)
