@@ -252,38 +252,35 @@ function removePhoto(id) {
 // 1. Physisch aus GCS (DELETE /api/photos?objectName=...)
 // 2. Metadaten + ID in __deleted__ Liste (DELETE /api/user-edits/:id)
 // Beide Aufrufe werden awaitet mit Retry wenn Render schläft.
-async function deleteFromCloud(photo) {
+function deleteFromCloud(photo) {
+  // Komplett non-blocking: läuft im Hintergrund via setTimeout
+  // KEIN await, KEIN ensureServerAwake (würde UI blockieren)
+  setTimeout(() => _deleteFromCloudAsync(photo), 0);
+}
+
+async function _deleteFromCloudAsync(photo) {
   const endpoint = getApiEndpoint();
   if (!endpoint || !photo) return;
 
-  // Render aufwecken falls nötig
-  await ensureServerAwake(endpoint).catch(() => {});
+  // Kurze Timeouts — wenn Render schläft passiert nichts Schlimmes:
+  // die Deleted-Liste ist lokal bereits gesetzt, der Server wird
+  // beim nächsten Sync der das Foto eh nicht mehr zurückliefert
 
-  // 1. Physisch aus GCS löschen
+  // 1. Physisch aus GCS löschen (best-effort)
   if (photo.cloudObject) {
-    try {
-      await fetchWithTimeout(
-        `${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`,
-        { method: "DELETE" },
-        20000
-      );
-    } catch (e) {
-      console.warn("[GCS DELETE]", e.message);
-    }
+    fetch(`${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`, {
+      method: "DELETE",
+      signal: AbortController ? (() => { const c = new AbortController(); setTimeout(() => c.abort(), 8000); return c.signal; })() : undefined
+    }).catch(() => {});
   }
 
-  // 2. In __deleted__ eintragen (id + cloudObject)
+  // 2. ID in __deleted__ eintragen (best-effort)
   const idsToDelete = [photo.id, photo.cloudObject].filter(Boolean);
   for (const id of idsToDelete) {
-    try {
-      await fetchWithTimeout(
-        `${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
-        { method: "DELETE" },
-        10000
-      );
-    } catch (e) {
-      console.warn("[user-edits DELETE]", e.message);
-    }
+    fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal: AbortController ? (() => { const c = new AbortController(); setTimeout(() => c.abort(), 8000); return c.signal; })() : undefined
+    }).catch(() => {});
   }
 }
 
@@ -771,13 +768,18 @@ async function syncFromCloud(options = {}) {
     else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
   // ── Gelöschte Fotos aus lokaler IndexedDB entfernen ──────────────
-  // Das ist der entscheidende Schritt: Fotos die auf einem anderen
-  // Gerät gelöscht wurden, aber noch lokal in der DB liegen, rauswerfen.
+  // Fotos die auf einem anderen Gerät gelöscht wurden, lokal rauswerfen.
   const allLocal = await getAllPhotos();
   let purged = 0;
   for (const p of allLocal) {
     if (isDeleted(p)) {
       await removePhotoFromDb(p.id);
+      // Auch aus GCS physisch löschen falls noch vorhanden
+      // (best-effort, kein await damit Sync nicht hängt)
+      if (p.cloudObject) {
+        fetch(`${endpoint}/api/photos?objectName=${encodeURIComponent(p.cloudObject)}`,
+          { method: "DELETE" }).catch(() => {});
+      }
       purged++;
     }
   }
@@ -869,11 +871,19 @@ async function handleFiles(fileList) {
       continue;
     }
     // ── Duplikat-Check ─────────────────────────────────────────────
-    const hash = await fileHash(buffer);
-    const duplicate = state.photos.find((p) => p.fileHash === hash);
-    if (duplicate) {
-      setUploadItemStatus(item, `⚠ Duplikat — bereits vorhanden als "${duplicate.title || duplicate.name}"`, true);
-      continue;
+    let hash = null;
+    try {
+      hash = await Promise.race([
+        fileHash(buffer),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("hash timeout")), 3000))
+      ]);
+    } catch { hash = null; }
+    if (hash) {
+      const duplicate = state.photos.find((p) => p.fileHash === hash);
+      if (duplicate) {
+        setUploadItemStatus(item, `⚠ Duplikat — bereits vorhanden als "${duplicate.title || duplicate.name}"`, true);
+        continue;
+      }
     }
     const exif = parseExif(buffer);
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
