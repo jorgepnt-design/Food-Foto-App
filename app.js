@@ -804,33 +804,50 @@ async function handleFiles(fileList) {
   if (!files.length) {
     const item = document.createElement("div");
     item.className = "upload-item";
-    item.innerHTML = `<span>Keine unterstützten Bilder ausgewählt</span><strong>Hinweis</strong>`;
+    item.innerHTML = `<span>Keine unterstützten Bilder</span><strong>Hinweis</strong>`;
     uploadList.prepend(item);
     return;
   }
   const endpoint = getApiEndpoint();
   if (endpoint) wakeUpRender(endpoint);
+
   for (const file of files) {
     const item = document.createElement("div");
     item.className = "upload-item";
-    item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Import...</strong>`;
+    item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Lese Datei...</strong>`;
     uploadList.prepend(item);
+
+    // Schritt 1: Datei lesen
     let dataUrl, buffer;
     try {
-      [dataUrl, buffer] = await Promise.all([createLocalPreview(file), readAsArrayBuffer(file)]);
+      setUploadItemStatus(item, "Lese Datei...");
+      [dataUrl, buffer] = await Promise.all([
+        createLocalPreview(file),
+        readAsArrayBuffer(file)
+      ]);
+      setUploadItemStatus(item, "Datei gelesen ✓");
     } catch (error) {
       setUploadItemStatus(item, `Lesefehler: ${error.message}`, true);
       continue;
     }
-    // ── Duplikat-Check ─────────────────────────────────────────────
-    const hash = await fileHash(buffer);
-    const duplicate = state.photos.find((p) => p.fileHash === hash);
-    if (duplicate) {
-      setUploadItemStatus(item, `⚠ Duplikat — bereits vorhanden als "${duplicate.title || duplicate.name}"`, true);
-      continue;
-    }
-    const exif = parseExif(buffer);
+
+    // Schritt 2: EXIF + Metadaten
+    setUploadItemStatus(item, "Verarbeite EXIF...");
+    let exif = {};
+    try { exif = parseExif(buffer); } catch {}
     const created = exif.takenAt || new Date(file.lastModified || Date.now()).toISOString();
+
+    // Schritt 3: Duplikat-Check
+    let hash = null;
+    try {
+      hash = await fileHash(buffer);
+      const duplicate = state.photos.find((p) => p.fileHash === hash);
+      if (duplicate) {
+        setUploadItemStatus(item, `⚠ Duplikat: "${duplicate.title || duplicate.name}"`, true);
+        continue;
+      }
+    } catch {}
+
     const photo = {
       id: generateUUID(), name: file.name, type: normalizeImageType(file.type),
       dataUrl, takenAt: created,
@@ -839,23 +856,33 @@ async function handleFiles(fileList) {
       description: "", favorite: false, createdAt: new Date().toISOString(), storage: "local",
       fileHash: hash
     };
-    if (endpoint) {
+
+    // Schritt 4: Lokal speichern
+    setUploadItemStatus(item, "Speichere lokal...");
+    await savePhotoBestEffort(photo, item);
+
+    // Schritt 5: Cloud-Upload (optional)
+    if (endpoint && photo.storage === "local") {
       setUploadItemStatus(item, "Cloud-Upload...");
       try {
         const cloud = await uploadPhotoToCloud(file, photo);
-        if (cloud) { photo.storage = "gcs"; photo.cloudObject = cloud.objectName; photo.cloudUrl = cloud.url; delete photo.cloudError; }
+        if (cloud) {
+          photo.storage = "gcs";
+          photo.cloudObject = cloud.objectName;
+          photo.cloudUrl = cloud.url;
+          delete photo.cloudError;
+          await savePhotoBestEffort(photo, item);
+        }
       } catch (error) {
-        photo.storage = "local"; photo.cloudError = error.message;
         setUploadItemStatus(item, "Cloud fehlgeschlagen — lokal gespeichert", true);
-        item.title = `Cloud-Fehler: ${error.message}`;
         console.error("[Cloud-Upload]", file.name, error);
       }
     }
-    await savePhotoBestEffort(photo, item);
   }
   render();
   switchView("gallery");
 }
+
 
 async function savePhotoBestEffort(photo, item) {
   try {
