@@ -785,12 +785,12 @@ async function syncFromCloud(options = {}) {
       cloudUrl: cp.cloudUrl,
       editedAt: cp.editedAt || cp.updatedAt || cp.createdAt
     };
+    // Foto überspringen wenn keine gültige URL vorhanden
+    if (!merged.dataUrl || merged.dataUrl.length < 10) continue;
     if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
     else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
-  // ── Fotos die nicht mehr in der Cloud sind lokal löschen ────────
-  // Das fängt auch Fälle ab wo __deleted__ noch nicht angekommen ist
-  // weil Render gerade schläft
+  // ── Fotos bereinigen ────────────────────────────────────────────
   const cloudObjectSet = new Set(
     (cloudPhotos.photos || []).map((cp) => cp.cloudObject).filter(Boolean)
   );
@@ -799,12 +799,18 @@ async function syncFromCloud(options = {}) {
   );
   const currentLocal = await getAllPhotos();
   for (const p of currentLocal) {
-    if (p.storage !== "gcs" && p.storage !== "cloud") continue; // nur Cloud-Fotos prüfen
-    const stillInCloud = (p.cloudObject && cloudObjectSet.has(p.cloudObject))
-                      || (p.id && cloudIdSet.has(p.id));
-    if (!stillInCloud) {
-      // Foto ist in der Cloud nicht mehr vorhanden → lokal löschen
-      addToDeletedSet(p);
+    // 1. Cloud-Foto das nicht mehr in GCS ist → löschen
+    if (p.storage === "gcs" || p.storage === "cloud") {
+      const stillInCloud = (p.cloudObject && cloudObjectSet.has(p.cloudObject))
+                        || (p.id && cloudIdSet.has(p.id));
+      if (!stillInCloud) {
+        addToDeletedSet(p);
+        await removePhotoFromDb(p.id);
+        continue;
+      }
+    }
+    // 2. Foto ohne gültige URL → löschen (kaputte Einträge)
+    if (!p.dataUrl || p.dataUrl.length < 10) {
       await removePhotoFromDb(p.id);
     }
   }
@@ -1172,10 +1178,15 @@ function filterPhotos() {
 function renderGallery() {
   const grid = $("#gallery-grid");
   grid.innerHTML = "";
-  $("#result-count").textContent = `${state.filtered.length} Foto${state.filtered.length === 1 ? "" : "s"}`;
-  $("#empty-state").classList.toggle("hidden", state.filtered.length > 0);
+  // Fotos ohne gültige Bild-URL ausfiltern (z.B. nach geräteübergreifendem Löschen)
+  const validFiltered = state.filtered.filter((photo) => {
+    const url = getDisplayImageUrl(photo);
+    return url && url.length > 0;
+  });
+  $("#result-count").textContent = `${validFiltered.length} Foto${validFiltered.length === 1 ? "" : "s"}`;
+  $("#empty-state").classList.toggle("hidden", validFiltered.length > 0);
 
-  state.filtered.forEach((photo) => {
+  validFiltered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
     node.querySelector("img").src = getDisplayImageUrl(photo);
     node.querySelector("img").alt = photo.description || photo.name;
