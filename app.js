@@ -731,11 +731,38 @@ async function syncFromCloud(options = {}) {
     if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
     else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
+  // ── Gelöschte Fotos aus lokaler IndexedDB entfernen ──────────────
+  // Das ist der entscheidende Schritt: Fotos die auf einem anderen
+  // Gerät gelöscht wurden, aber noch lokal in der DB liegen, rauswerfen.
+  const allLocal = await getAllPhotos();
+  let purged = 0;
+  for (const p of allLocal) {
+    if (isDeleted(p)) {
+      await removePhotoFromDb(p.id);
+      purged++;
+    }
+  }
+
   state.photos = await getAllPhotos();
   render();
   if (!options.silent) switchView("gallery");
-  const skipMsg = skipped > 0 ? ` (${skipped} gelöscht übersprungen)` : "";
-  setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.${skipMsg}`, "#27ae60");
+  const skipMsg  = skipped > 0 ? ` · ${skipped} übersprungen` : "";
+  const purgeMsg = purged  > 0 ? ` · ${purged} lokal gelöscht` : "";
+  setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.${skipMsg}${purgeMsg}`, "#27ae60");
+}
+
+// Löscht nur aus der DB — ohne die Deleted-Liste zu befüllen
+// (wird beim Sync intern verwendet, nicht direkt vom User aufgerufen)
+function removePhotoFromDb(id) {
+  if (!state.db) {
+    state.photos = state.photos.filter((p) => p.id !== id);
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const request = tx("readwrite").delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror  = () => reject(request.error);
+  });
 }
 
 // ─── Upload ───────────────────────────────────────────────────────
