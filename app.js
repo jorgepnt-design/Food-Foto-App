@@ -377,20 +377,29 @@ function applyGalleryView() {
   if (!grid) return;
 
   // Alle alten View- und Cols-Klassen entfernen
-  const classes = Array.from(grid.classList);
-  classes.forEach((c) => {
+  Array.from(grid.classList).forEach((c) => {
     if (c.startsWith("view-") || c.startsWith("cols-")) grid.classList.remove(c);
   });
 
-  grid.classList.add(`view-${state.galleryView}`);
-  grid.classList.add(`cols-${state.galleryCols}`);
+  grid.classList.add("view-" + state.galleryView);
+  grid.classList.add("cols-" + state.galleryCols);
 
   // Aktiven View-Button markieren
   $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === state.galleryView));
 
-  // "pure" Modus: Beschriftung in Cards ausblenden
-  $$(".photo-info, .tag-row, .card-actions").forEach((el) => {
-    el.style.display = state.galleryView === "pure" ? "none" : "";
+  // Sichtbarkeit je nach Modus steuern
+  const isPure    = state.galleryView === "pure";
+  const isCompact = state.galleryView === "compact";
+  const isList    = state.galleryView === "list";
+
+  $$(".photo-info").forEach((el) => {
+    el.style.display = isPure ? "none" : "";
+  });
+  $$(".tag-row").forEach((el) => {
+    el.style.display = (isPure || isCompact) ? "none" : "";
+  });
+  $$(".card-actions").forEach((el) => {
+    el.style.display = (isPure || isCompact) ? "none" : isList ? "flex" : "";
   });
 }
 
