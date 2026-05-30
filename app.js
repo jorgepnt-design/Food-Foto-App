@@ -102,6 +102,37 @@ function safeSet(key, value) {
 
 document.addEventListener("DOMContentLoaded", init);
 
+// ─── Deleted-Liste (lokal persistent) ────────────────────────────
+// Speichert IDs und cloudObjects von gelöschten Fotos damit
+// sie beim nächsten Sync nicht wieder auftauchen.
+
+const DELETED_KEY = "foodporn-deleted-ids";
+
+function getDeletedSet() {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch { return new Set(); }
+}
+
+function addToDeletedSet(photo) {
+  try {
+    const set = getDeletedSet();
+    // Sowohl id als auch cloudObject merken
+    if (photo.id)          set.add(photo.id);
+    if (photo.cloudObject) set.add(photo.cloudObject);
+    // Auf max 500 Einträge begrenzen (älteste rauswerfen)
+    const arr = Array.from(set);
+    const trimmed = arr.length > 500 ? arr.slice(arr.length - 500) : arr;
+    localStorage.setItem(DELETED_KEY, JSON.stringify(trimmed));
+  } catch {}
+}
+
+function isDeleted(cp) {
+  const set = getDeletedSet();
+  return (cp.id && set.has(cp.id)) || (cp.cloudObject && set.has(cp.cloudObject));
+}
+
 async function init() {
   const _ep = safeGet("foodporn-api-endpoint") || safeGet("mealvault-api-endpoint");
   if (!_ep || _ep.includes("food-foto-app-api")) {
@@ -205,6 +236,10 @@ function savePhoto(photo) {
 }
 
 function removePhoto(id) {
+  // Foto in Deleted-Liste eintragen bevor es aus der DB entfernt wird
+  const photo = state.photos.find((p) => p.id === id);
+  if (photo) addToDeletedSet(photo);
+
   if (!state.db) { state.photos = state.photos.filter((p) => p.id !== id); return Promise.resolve(); }
   return new Promise((resolve, reject) => {
     const request = tx("readwrite").delete(id);
@@ -651,8 +686,13 @@ async function syncFromCloud(options = {}) {
     console.warn("[user-edits]", e.message);
   }
 
-  let imported = 0;
+  let imported = 0, skipped = 0;
   for (const cp of cloudPhotos.photos || []) {
+    // ── Gelöschte Fotos überspringen ──────────────────────────────
+    if (isDeleted(cp)) {
+      skipped++;
+      continue;
+    }
     // User-Edits mit Cloud-Metadaten mergen
     const edits = userEdits[cp.id] || {};
     Object.assign(cp, edits);
@@ -681,7 +721,8 @@ async function syncFromCloud(options = {}) {
   state.photos = await getAllPhotos();
   render();
   if (!options.silent) switchView("gallery");
-  setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.`, "#27ae60");
+  const skipMsg = skipped > 0 ? ` (${skipped} gelöscht übersprungen)` : "";
+  setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.${skipMsg}`, "#27ae60");
 }
 
 // ─── Upload ───────────────────────────────────────────────────────
@@ -1031,8 +1072,10 @@ function renderGallery() {
     node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
     node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
     node.querySelector(".card-delete").addEventListener("click", async () => {
+      if (state.batchMode) return;
       if (!confirm("Dieses Foto wirklich löschen?")) return;
       await removePhoto(photo.id);
+      deleteCloudUserEdit(photo);
       state.photos = state.photos.filter((item) => item.id !== photo.id);
       render();
     });
@@ -1161,6 +1204,9 @@ async function deleteSelected() {
   if (!photo || !confirm("Dieses Foto wirklich löschen?")) return;
   await removePhoto(photo.id);
   state.photos = state.photos.filter((item) => item.id !== photo.id);
+  // User-Edits aus Cloud entfernen damit Metadaten nicht beim nächsten
+  // Sync eines anderen Geräts wieder auftauchen
+  deleteCloudUserEdit(photo);
   render();
   closeDetail();
 }
@@ -1779,7 +1825,9 @@ async function batchDelete() {
   if (!confirm(`${n} Foto${n === 1 ? "" : "s"} wirklich löschen?`)) return;
 
   for (const id of Array.from(state.selectedIds)) {
+    const photo = state.photos.find((p) => p.id === id);
     await removePhoto(id);
+    if (photo) deleteCloudUserEdit(photo);
   }
   state.photos = state.photos.filter((p) => !state.selectedIds.has(p.id));
   batchCancel();
@@ -2100,4 +2148,16 @@ async function cropRestoreOriginal() {
   showLightboxPhoto();
   updateCropHistoryButtons();
   render();
+}
+
+// ─── Cloud User-Edit beim Löschen entfernen ───────────────────────
+// Verhindert dass gelöschte Metadaten beim nächsten Sync
+// auf einem anderen Gerät wieder auftauchen.
+function deleteCloudUserEdit(photo) {
+  const endpoint = getApiEndpoint();
+  if (!photo || !photo.id || !endpoint) return;
+  // Fire-and-forget — kein await, kein Fehler-Blocking
+  fetchWithTimeout(`${endpoint}/api/user-edits/${encodeURIComponent(photo.id)}`, {
+    method: "DELETE"
+  }, 10000).catch((e) => console.warn("[user-edits DELETE]", e.message));
 }
