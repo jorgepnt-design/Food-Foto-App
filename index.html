@@ -10,7 +10,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260529-2" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260529-2" />
   <link rel="manifest" href="site.webmanifest?v=foodporn-20260529-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-27" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260530-28" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -36,13 +36,6 @@
         <button class="quick-filter" data-quick="favorites" data-i18n="favorites">Favoriten</button>
         <button class="quick-filter" data-quick="thisMonth" data-i18n="thisMonth">Dieser Monat</button>
         <button class="quick-filter" data-quick="untagged" data-i18n="untagged">Ohne Tags</button>
-      </section>
-
-      <section class="sidebar-section" id="timeline-section">
-        <h2 class="sidebar-toggle" id="timeline-toggle" aria-expanded="true">
-          📅 Zeitraum <span class="toggle-arrow">▾</span>
-        </h2>
-        <div id="timeline-tree" class="timeline-tree"></div>
       </section>
 
       <section class="sidebar-section storage-note">
@@ -308,7 +301,7 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-20260530-27" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260530-28" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/Food-Foto-App/sw.js", { scope: "/Food-Foto-App/" })
