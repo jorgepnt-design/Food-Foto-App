@@ -1323,3 +1323,192 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.target === lb || e.target.classList.contains("lightbox-img-wrap")) closeLightbox();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FEATURE: Zeitraum-Baum (Sidebar Timeline) ───────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+const MONTHS_DE = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function renderTimeline() {
+  const tree = $("#timeline-tree");
+  if (!tree) return;
+
+  // Zähle Fotos pro Jahr und Monat
+  const counts = {}; // { year: { total, months: { m: count } } }
+  state.photos.forEach((p) => {
+    const d = new Date(p.takenAt);
+    if (isNaN(d)) return;
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    if (!counts[y]) counts[y] = { total: 0, months: {} };
+    counts[y].total++;
+    counts[y].months[m] = (counts[y].months[m] || 0) + 1;
+  });
+
+  const years = Object.keys(counts).map(Number).sort((a, b) => b - a);
+  const monthNames = state.lang === "de" ? MONTHS_DE : MONTHS_EN;
+
+  tree.innerHTML = "";
+
+  // "Alle" zurücksetzen
+  const allBtn = document.createElement("button");
+  allBtn.className = "tl-all" + (state.timelineYear === null ? " tl-active" : "");
+  allBtn.innerHTML = `<span>Alle</span><span class="tl-count">${state.photos.length}</span>`;
+  allBtn.addEventListener("click", () => {
+    state.timelineYear = null;
+    state.timelineMonth = null;
+    render();
+  });
+  tree.appendChild(allBtn);
+
+  years.forEach((year) => {
+    const info = counts[year];
+    // Jahr-Zeile
+    const yearBtn = document.createElement("button");
+    yearBtn.className = "tl-year" + (state.timelineYear === year && state.timelineMonth === null ? " tl-active" : "");
+    const isOpen = state.timelineYear === year;
+    yearBtn.innerHTML = `<span class="tl-arrow">${isOpen ? "▾" : "▸"}</span><span>${year}</span><span class="tl-count">${info.total}</span>`;
+    yearBtn.addEventListener("click", () => {
+      if (state.timelineYear === year && state.timelineMonth === null) {
+        // Nochmal klicken → Alle
+        state.timelineYear = null;
+        state.timelineMonth = null;
+      } else {
+        state.timelineYear = year;
+        state.timelineMonth = null;
+      }
+      render();
+    });
+    tree.appendChild(yearBtn);
+
+    // Monate (nur wenn Jahr aufgeklappt)
+    if (state.timelineYear === year) {
+      const months = Object.keys(info.months).map(Number).sort((a, b) => b - a);
+      months.forEach((m) => {
+        const monthBtn = document.createElement("button");
+        monthBtn.className = "tl-month" + (state.timelineMonth === m ? " tl-active" : "");
+        monthBtn.innerHTML = `<span>${monthNames[m]}</span><span class="tl-count">${info.months[m]}</span>`;
+        monthBtn.addEventListener("click", () => {
+          state.timelineYear = year;
+          state.timelineMonth = state.timelineMonth === m ? null : m;
+          render();
+        });
+        tree.appendChild(monthBtn);
+      });
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FEATURE: Batch-Edit (Stapelbearbeitung) ─────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+function setupBatchCategorySelect() {
+  const sel = $("#batch-category");
+  if (!sel) return;
+  sel.innerHTML = `<option value="">Kategorie setzen…</option>` +
+    categories.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+}
+
+function startBatchMode() {
+  state.batchMode = true;
+  state.selectedIds = new Set();
+  updateBatchToolbar();
+  render();
+}
+
+function batchCancel() {
+  state.batchMode = false;
+  state.selectedIds = new Set();
+  updateBatchToolbar();
+  render();
+}
+
+function toggleBatchSelect(id, selected) {
+  if (selected) state.selectedIds.add(id);
+  else state.selectedIds.delete(id);
+  // Card visuell aktualisieren ohne komplett neu zu rendern
+  const card = $(`#gallery-grid [data-id="${id}"]`);
+  if (card) card.classList.toggle("batch-selected", selected);
+  updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+  const toolbar = $("#batch-toolbar");
+  const countEl = $("#batch-count");
+  if (!toolbar) return;
+  const n = state.selectedIds.size;
+  const visible = state.batchMode;
+  toolbar.classList.toggle("hidden", !visible);
+  if (countEl) countEl.textContent = `${n} ausgewählt`;
+  // Alle Karten im Batch-Modus markieren
+  $$(".photo-card").forEach((card) => {
+    card.classList.toggle("batch-mode", state.batchMode);
+  });
+}
+
+function batchSetFavorite(value) {
+  if (!state.selectedIds.size) return;
+  // Karten im DOM direkt aktualisieren + in DB speichern
+  state.selectedIds.forEach((id) => {
+    const photo = state.photos.find((p) => p.id === id);
+    if (photo) { photo.favorite = value; savePhoto(photo); }
+  });
+  render();
+}
+
+async function batchApply() {
+  const n = state.selectedIds.size;
+  if (!n) return;
+
+  const newCategory = $("#batch-category").value;
+  const rawTags = $("#batch-tags").value.trim();
+  const addTags = rawTags ? rawTags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+
+  if (!newCategory && !addTags.length) {
+    alert("Bitte eine Kategorie wählen oder Tags eingeben.");
+    return;
+  }
+
+  const ids = Array.from(state.selectedIds);
+  for (const id of ids) {
+    const photo = state.photos.find((p) => p.id === id);
+    if (!photo) continue;
+    if (newCategory) photo.category = newCategory;
+    if (addTags.length) {
+      const existing = new Set(photo.tags || []);
+      addTags.forEach((t) => existing.add(t));
+      photo.tags = Array.from(existing);
+    }
+    await savePhoto(photo);
+    // Metadaten in Cloud synchronisieren
+    if (photo.id && getApiEndpoint()) {
+      fetchWithTimeout(`${getApiEndpoint()}/api/user-edits`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: photo.id, edits: withoutDataUrl(photo) })
+      }, 10000).catch(() => {});
+    }
+  }
+
+  // Eingaben zurücksetzen
+  $("#batch-category").value = "";
+  $("#batch-tags").value = "";
+
+  state.photos = await getAllPhotos();
+  batchCancel();
+}
+
+async function batchDelete() {
+  const n = state.selectedIds.size;
+  if (!n) return;
+  if (!confirm(`${n} Foto${n === 1 ? "" : "s"} wirklich löschen?`)) return;
+
+  for (const id of Array.from(state.selectedIds)) {
+    await removePhoto(id);
+  }
+  state.photos = state.photos.filter((p) => !state.selectedIds.has(p.id));
+  batchCancel();
+}
