@@ -278,6 +278,41 @@ function bindEvents() {
   $("#close-detail").addEventListener("click", closeDetail);
   $("#detail-prev").addEventListener("click", () => detailNavigate(-1));
   $("#detail-next").addEventListener("click", () => detailNavigate(+1));
+
+  // ── Swipe auf dem Detail-Panel (iPhone) ─────────────────────────
+  // Nur auf dem Canvas/Bild-Bereich swipeable, nicht auf Formfeldern
+  const detailPanel = $("#detail-panel");
+  let dtStartX = 0, dtStartY = 0, dtSwiping = false;
+
+  detailPanel.addEventListener("touchstart", (e) => {
+    // Nicht triggern wenn Touch auf Input/Select/Textarea
+    const tag = e.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON") return;
+    dtStartX = e.touches[0].clientX;
+    dtStartY = e.touches[0].clientY;
+    dtSwiping = false;
+  }, { passive: true });
+
+  detailPanel.addEventListener("touchmove", (e) => {
+    if (!dtStartX) return;
+    const dx = e.touches[0].clientX - dtStartX;
+    const dy = e.touches[0].clientY - dtStartY;
+    // Nur wenn klar horizontal (dx > dy und mindestens 12px)
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      dtSwiping = true;
+      e.preventDefault(); // Scroll verhindern während horizontalem Swipe
+    }
+  }, { passive: false });
+
+  detailPanel.addEventListener("touchend", (e) => {
+    if (!dtSwiping || !dtStartX) { dtStartX = 0; return; }
+    const dx = e.changedTouches[0].clientX - dtStartX;
+    const dy = e.changedTouches[0].clientY - dtStartY;
+    dtStartX = 0; dtSwiping = false;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    // Swipe links → nächstes, Swipe rechts → vorheriges
+    detailNavigate(dx < 0 ? +1 : -1);
+  }, { passive: true });
   $("#detail-form").addEventListener("submit", saveDetails);
   $("#favorite-toggle").addEventListener("click", toggleSelectedFavorite);
   $("#delete-photo").addEventListener("click", deleteSelected);
