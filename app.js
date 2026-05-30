@@ -128,10 +128,28 @@ function isDeleted(cp) {
   return (cp.id && set.has(cp.id)) || (cp.cloudObject && set.has(cp.cloudObject));
 }
 
-// Cloud-Löschung: vollständig non-blocking
+// Cloud-Löschung: non-blocking aber mit Retry
 function deleteFromCloud(photo) {
+  // Sofort lokal merken — das ist das Wichtigste
+  if (photo) addToDeletedSet(photo);
+  // Cloud-Löschung im Hintergrund mit Retry
+  setTimeout(() => _retryDeleteFromCloud(photo, 3), 100);
+}
+
+async function _retryDeleteFromCloud(photo, retriesLeft) {
   const endpoint = getApiEndpoint();
-  if (!endpoint || !photo) return;
+  if (!endpoint || !photo || retriesLeft <= 0) return;
+  try {
+    // Server aufwecken (kurzer Timeout)
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 6000);
+    await fetch(`${endpoint}/health`, { cache: "no-store", signal: ctrl.signal });
+  } catch {
+    // Server schläft noch — in 15s nochmal versuchen
+    setTimeout(() => _retryDeleteFromCloud(photo, retriesLeft - 1), 15000);
+    return;
+  }
+  // Server wach — jetzt löschen
   if (photo.cloudObject) {
     fetch(`${endpoint}/api/photos?objectName=${encodeURIComponent(photo.cloudObject)}`,
       { method: "DELETE" }).catch(() => {});
