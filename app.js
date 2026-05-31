@@ -189,6 +189,8 @@ async function init() {
     state.photos = await getAllPhotos();
     render();
     autoSyncFromCloud();
+    // Thumbnails für alle Fotos generieren die noch keins haben
+    generateMissingThumbnails();
   } catch (error) {
     showStartupError(error);
     state.photos = [];
@@ -1238,14 +1240,8 @@ function renderGallery() {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
     const imgEl = node.querySelector("img");
     imgEl.alt = photo.description || photo.name;
-    // Thumbnail sofort zeigen falls vorhanden, sonst Lazy Load
-    if (photo.thumbUrl) {
-      imgEl.src = photo.thumbUrl;
-    } else {
-      imgEl.src = "";
-      imgEl.dataset.src = getDisplayImageUrl(photo);
-      imgEl.classList.add("lazy");
-    }
+    // Thumbnail sofort zeigen — thumbUrl, cloudUrl oder dataUrl
+    imgEl.src = photo.thumbUrl || getDisplayImageUrl(photo);
     node.querySelector("h3").textContent = photo.title || photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
@@ -1278,7 +1274,6 @@ function renderGallery() {
 
   // Galerie-View nach Render anwenden (damit neue Cards korrekt gestylt sind)
   applyGalleryView();
-  startLazyLoad();
 }
 
 function formatDate(iso) {
@@ -2354,4 +2349,54 @@ async function _loadAndThumb(imgEl, src) {
       imgEl.src = photo.thumbUrl;
     }
   } catch { /* ignorieren */ }
+}
+
+// ─── Batch Thumbnail Generator ────────────────────────────────────
+// Läuft einmalig beim App-Start im Hintergrund.
+// Erstellt für alle Fotos ohne thumbUrl ein 400px Thumbnail
+// und speichert es in der IndexedDB → nächster Start: sofort sichtbar.
+
+async function generateMissingThumbnails() {
+  const photos = state.photos.filter((p) => !p.thumbUrl);
+  if (!photos.length) return;
+
+  for (const photo of photos) {
+    const src = getDisplayImageUrl(photo);
+    if (!src) continue;
+    try {
+      const thumb = await _makeThumb(src, photo.type);
+      if (thumb) {
+        photo.thumbUrl = thumb;
+        await savePhoto(photo).catch(() => {});
+      }
+    } catch { /* ignorieren */ }
+    // Kurze Pause damit die UI nicht blockiert
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  // Galerie neu rendern damit alle Thumbnails sofort sichtbar sind
+  render();
+}
+
+function _makeThumb(src, type) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const timer = setTimeout(() => { img.onload = null; resolve(null); }, 10000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const maxEdge = 400;
+        const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+        if (ratio >= 1 && src.startsWith("data:")) { resolve(src); return; }
+        if (ratio >= 1) { resolve(null); return; } // Cloud-URL — nicht als thumb speichern
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.naturalWidth  * ratio);
+        canvas.height = Math.round(img.naturalHeight * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL(type || "image/jpeg", 0.75));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.src = src;
+  });
 }
