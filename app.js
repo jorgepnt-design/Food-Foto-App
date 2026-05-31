@@ -1251,6 +1251,10 @@ function renderGallery() {
     });
     node.querySelector(".card-details").addEventListener("click", () => openDetail(photo.id));
     node.querySelector(".card-fullscreen").addEventListener("click", () => openLightbox(photo.id));
+    node.querySelector(".card-share").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await sharePhoto(photo);
+    });
     node.querySelector(".card-delete").addEventListener("click", async () => {
       if (!confirm("Dieses Foto wirklich löschen?")) return;
       await removePhoto(photo.id);
@@ -2399,4 +2403,43 @@ function _makeThumb(src, type) {
     img.onerror = () => { clearTimeout(timer); resolve(null); };
     img.src = src;
   });
+}
+
+// ─── Foto teilen (Galerie-Karte + Lightbox) ───────────────────────
+async function sharePhoto(photo) {
+  if (!photo) return;
+  const title = photo.title || photo.category || "Food-Foto";
+  const text  = [photo.title, photo.description, (photo.tags||[]).join(" ")].filter(Boolean).join(" · ");
+  const src   = getDisplayImageUrl(photo);
+
+  // Web Share API — öffnet nativen Share-Dialog (WhatsApp, iMessage etc.)
+  if (navigator.share) {
+    try {
+      // Bild als Datei teilen (iPhone: direkt in WhatsApp/iMessage einfügen)
+      const blob = await fetch(src).then((r) => {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.blob();
+      });
+      const file = new File([blob], photo.name || "food.jpg", { type: blob.type || "image/jpeg" });
+      const canShare = typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
+      if (canShare) {
+        await navigator.share({ title, text, files: [file] });
+        return;
+      }
+    } catch (e) { console.warn("[sharePhoto blob]", e.message); }
+
+    // Fallback: nur URL teilen
+    try {
+      await navigator.share({ title, text, url: src });
+      return;
+    } catch {}
+  }
+
+  // Desktop-Fallback: URL kopieren
+  try {
+    await navigator.clipboard.writeText(src);
+    alert("🔗 Bild-URL in Zwischenablage kopiert");
+  } catch {
+    alert("Teilen wird auf diesem Gerät nicht unterstützt");
+  }
 }
