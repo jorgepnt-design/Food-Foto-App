@@ -148,10 +148,26 @@ textarea { resize: vertical; }
 .photo-info p { color: var(--muted); font-size: 0.82rem; }
 .favorite-star { border: 0; background: transparent; color: var(--accent); font-size: 1.4rem; line-height: 1; }
 .tag-row { min-height: 28px; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
-.card-actions { display: grid; grid-template-columns: 1fr 1fr auto; border-top: 1px solid var(--line); }
-.card-btn { border: 0; background: transparent; padding: 10px 6px; font-size: 0.82rem; cursor: pointer; color: var(--primary); font-weight: 500; transition: background .15s; }
-.card-btn:first-child { border-right: 1px solid var(--line); }
-.card-btn:nth-child(2) { border-right: 1px solid var(--line); }
+.card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  border-top: 1px solid var(--line);
+}
+.card-btn {
+  border: 0;
+  background: transparent;
+  padding: 9px 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 500;
+  transition: background .15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.card-btn + .card-btn { border-left: 1px solid var(--line); }
 .card-btn:hover { background: var(--surface-soft); }
 .card-delete { color: #c0392b; padding: 10px 12px; font-size: 1rem; }
 .card-delete:hover { background: #fdecea; }
