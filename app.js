@@ -1614,9 +1614,41 @@ async function exportMetadata() {
 async function exportZip() {
   const files = state.filtered.length ? state.filtered : state.photos;
   if (!files.length) return;
-  const zipFiles = files.map((p) => ({ name: safeFileName(`${p.category}-${p.name}`), data: base64ToUint8(p.dataUrl) }));
-  zipFiles.push({ name: "metadata.json", data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2)) });
-  downloadBlob(new Blob([createZip(zipFiles)], { type: "application/zip" }), `foodporn-export-${new Date().toISOString().slice(0, 10)}.zip`);
+
+  const btn = $("#export-button");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Exportiere..."; }
+
+  try {
+    const zipFiles = [];
+    for (const p of files) {
+      const url = getDisplayImageUrl(p);
+      if (!url) continue;
+      let data;
+      try {
+        if (url.startsWith("data:")) {
+          // Lokales Bild — direkt als Base64 dekodieren
+          data = base64ToUint8(url);
+        } else {
+          // Cloud-URL — per fetch laden
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const buf = await res.arrayBuffer();
+          data = new Uint8Array(buf);
+        }
+        zipFiles.push({ name: safeFileName(`${p.title || p.category}-${p.name}`), data });
+      } catch { continue; }
+    }
+    zipFiles.push({
+      name: "metadata.json",
+      data: new TextEncoder().encode(JSON.stringify(files.map(withoutDataUrl), null, 2))
+    });
+    downloadBlob(
+      new Blob([createZip(zipFiles)], { type: "application/zip" }),
+      `foodporn-export-${new Date().toISOString().slice(0, 10)}.zip`
+    );
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "ZIP exportieren"; }
+  }
 }
 
 function withoutDataUrl(photo) { const { dataUrl, ...meta } = photo; return meta; }
