@@ -150,25 +150,23 @@ textarea { resize: vertical; }
 .tag-row { min-height: 28px; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
 .card-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
+  grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid var(--line);
 }
 .card-btn {
   border: 0;
   background: transparent;
-  padding: 9px 4px;
-  font-size: 0.8rem;
+  padding: 10px 0;
+  font-size: 1rem;
   cursor: pointer;
   color: var(--primary);
-  font-weight: 500;
   transition: background .15s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  text-align: center;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
 }
 .card-btn + .card-btn { border-left: 1px solid var(--line); }
-.card-btn:hover { background: var(--surface-soft); }
+.card-btn:hover, .card-btn:active { background: var(--surface-soft); }
 .card-delete { color: #c0392b; padding: 10px 12px; font-size: 1rem; }
 .card-delete:hover { background: #fdecea; }
 .tag-pill {
