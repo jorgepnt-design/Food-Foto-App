@@ -1236,8 +1236,16 @@ function renderGallery() {
 
   validFiltered.forEach((photo) => {
     const node = $("#photo-card-template").content.firstElementChild.cloneNode(true);
-    node.querySelector("img").src = getDisplayImageUrl(photo, true);
-    node.querySelector("img").alt = photo.description || photo.name;
+    const imgEl = node.querySelector("img");
+    imgEl.alt = photo.description || photo.name;
+    // Thumbnail sofort zeigen falls vorhanden, sonst Lazy Load
+    if (photo.thumbUrl) {
+      imgEl.src = photo.thumbUrl;
+    } else {
+      imgEl.src = "";
+      imgEl.dataset.src = getDisplayImageUrl(photo);
+      imgEl.classList.add("lazy");
+    }
     node.querySelector("h3").textContent = photo.title || photo.category;
     node.querySelector("p").textContent = formatDate(photo.takenAt);
     node.querySelector(".favorite-star").textContent = photo.favorite ? "★" : "☆";
@@ -1270,6 +1278,7 @@ function renderGallery() {
 
   // Galerie-View nach Render anwenden (damit neue Cards korrekt gestylt sind)
   applyGalleryView();
+  startLazyLoad();
 }
 
 function formatDate(iso) {
@@ -2275,4 +2284,74 @@ async function cropRestoreOriginal() {
   showLightboxPhoto();
   updateCropHistoryButtons();
   render();
+}
+
+// ─── Lazy Load + Auto-Thumbnail ───────────────────────────────────
+
+let _lazyObserver = null;
+
+function startLazyLoad() {
+  // Alte Observer aufräumen
+  if (_lazyObserver) _lazyObserver.disconnect();
+
+  const lazyImgs = Array.from(document.querySelectorAll("img.lazy[data-src]"));
+  if (!lazyImgs.length) return;
+
+  _lazyObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      const src = img.dataset.src;
+      if (!src) return;
+      _lazyObserver.unobserve(img);
+      img.classList.remove("lazy");
+
+      // Thumbnail erstellen und cachen
+      _loadAndThumb(img, src);
+    });
+  }, { rootMargin: "200px" }); // 200px vor dem Viewport schon laden
+
+  lazyImgs.forEach((img) => _lazyObserver.observe(img));
+}
+
+async function _loadAndThumb(imgEl, src) {
+  // Bild-ID aus der Card holen
+  const card = imgEl.closest("[data-id]");
+  const photoId = card ? card.dataset.id : null;
+
+  // Sofort die volle URL zeigen (damit Bild erscheint)
+  imgEl.src = src;
+
+  // Thumbnail im Hintergrund erstellen und speichern
+  if (!photoId) return;
+  const photo = state.photos.find((p) => p.id === photoId);
+  if (!photo || photo.thumbUrl) return; // schon vorhanden
+
+  // Warte bis img geladen ist
+  await new Promise((resolve) => {
+    if (imgEl.complete && imgEl.naturalWidth > 0) { resolve(); return; }
+    imgEl.onload  = resolve;
+    imgEl.onerror = resolve;
+  });
+
+  // Thumbnail aus dem bereits geladenen img-Element erstellen
+  try {
+    const maxEdge = 400;
+    const ratio = Math.min(1, maxEdge / Math.max(imgEl.naturalWidth, imgEl.naturalHeight));
+    if (ratio >= 1) {
+      // Bild ist schon klein — URL direkt als thumbUrl speichern
+      photo.thumbUrl = src.startsWith("data:") ? src : null;
+    } else {
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(imgEl.naturalWidth  * ratio);
+      canvas.height = Math.round(imgEl.naturalHeight * ratio);
+      canvas.getContext("2d").drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+      photo.thumbUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.75);
+    }
+    if (photo.thumbUrl) {
+      await savePhoto(photo).catch(() => {});
+      // img src auf Thumbnail umschalten für nächsten Render
+      imgEl.src = photo.thumbUrl;
+    }
+  } catch { /* ignorieren */ }
 }
