@@ -1283,3 +1283,19 @@ textarea { resize: vertical; }
 #crop-original:disabled {
   cursor: not-allowed;
 }
+
+/* ─── Lazy Load Placeholder ──────────────────────────────────────── */
+img.lazy {
+  background: var(--surface-soft);
+  /* Shimmer-Animation als Ladeanzeige */
+  background: linear-gradient(90deg,
+    var(--surface-soft) 25%,
+    var(--line) 50%,
+    var(--surface-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
