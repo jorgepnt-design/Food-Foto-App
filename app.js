@@ -1,14 +1,38 @@
 const DB_NAME = "mealvault-db";
 const STORE = "photos";
 const DEFAULT_API_ENDPOINT = "https://food-foto-app.onrender.com";
-const categories = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Sonstiges"];
+const DEFAULT_CATEGORIES = ["Frühstück", "Mittagessen", "Abendessen", "Snacks", "Dessert", "Getränke", "Restaurant / Auswärts", "Sonstiges"];
+const TAG_PRESETS = ["Low Carb", "Protein", "Süß", "Schnell", "Airfryer", "Italienisch", "Portugiesisch", "Vegetarisch"];
+const CUSTOM_CATEGORIES_KEY = "foodporn-custom-categories";
+
+// Alle Kategorien: Standard + eigene + alles was in Fotos vorkommt
+function getCategories() {
+  let custom = [];
+  try { custom = JSON.parse(safeGet(CUSTOM_CATEGORIES_KEY) || "[]"); } catch {}
+  const fromPhotos = state.photos.map((p) => p.category).filter(Boolean);
+  const all = [...DEFAULT_CATEGORIES];
+  [...custom, ...fromPhotos].forEach((c) => { if (!all.includes(c)) all.push(c); });
+  return all;
+}
+
+function addCustomCategory(name) {
+  const clean = (name || "").trim();
+  if (!clean) return null;
+  let custom = [];
+  try { custom = JSON.parse(safeGet(CUSTOM_CATEGORIES_KEY) || "[]"); } catch {}
+  if (!custom.includes(clean) && !DEFAULT_CATEGORIES.includes(clean)) {
+    custom.push(clean);
+    safeSet(CUSTOM_CATEGORIES_KEY, JSON.stringify(custom));
+  }
+  return clean;
+}
 
 const translations = {
   de: {
     appName: "Foodporn", tagline: "Food-Fotos organisiert", gallery: "Galerie", upload: "Upload", stats: "Statistiken",
     settings: "Einstellungen", quickFilters: "Schnellfilter", allPhotos: "Alle Fotos", favorites: "Favoriten",
     thisMonth: "Dieser Monat", untagged: "Ohne Tags", storage: "Speicherung",
-    storageText: "Lokal in IndexedDB. Cloud-Anbindung ist vorbereitet.", workspace: "Private Sammlung",
+    storageText: "Cloud-Speicherung in Google Cloud Storage, lokaler Cache in IndexedDB.", workspace: "Private Sammlung",
     galleryTitle: "Essensbilder", tutorial: "Tutorial", share: "Teilen", exportZip: "ZIP exportieren",
     search: "Suche", from: "Von", to: "Bis", category: "Kategorie", tag: "Tag", reset: "Zurücksetzen",
     emptyTitle: "Noch keine passenden Bilder", emptyText: "Lade Essensfotos hoch oder passe die Filter an.",
@@ -34,7 +58,7 @@ const translations = {
     appName: "Foodporn", tagline: "Food photos organized", gallery: "Gallery", upload: "Upload", stats: "Stats",
     settings: "Settings", quickFilters: "Quick filters", allPhotos: "All photos", favorites: "Favorites",
     thisMonth: "This month", untagged: "Untagged", storage: "Storage",
-    storageText: "Stored locally in IndexedDB. Cloud sync is ready to connect.", workspace: "Private collection",
+    storageText: "Stored in Google Cloud Storage, cached locally in IndexedDB.", workspace: "Private collection",
     galleryTitle: "Meal photos", tutorial: "Tutorial", share: "Share", exportZip: "Export ZIP",
     search: "Search", from: "From", to: "To", category: "Category", tag: "Tag", reset: "Reset",
     emptyTitle: "No matching photos yet", emptyText: "Upload meal photos or change the filters.",
@@ -187,6 +211,8 @@ async function init() {
     state.db = await openDb();
     await migrateLegacyPhotos();
     state.photos = await getAllPhotos();
+    setupCategorySelects();   // jetzt sind auch Kategorien aus vorhandenen Fotos bekannt
+    restoreFilters();         // gespeicherten Kategorie-Filter erneut anwenden
     render();
     autoSyncFromCloud();
     // Thumbnails für alle Fotos generieren die noch keins haben
@@ -289,8 +315,17 @@ function removePhoto(id) {
 }
 
 function setupCategorySelects() {
-  $("#category-filter").innerHTML = [`<option value="">Alle</option>`, ...categories.map((c) => `<option>${c}</option>`)].join("");
-  $("#detail-category").innerHTML = categories.map((c) => `<option>${c}</option>`).join("");
+  const cats = getCategories();
+  const opt = (c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+  const filterEl = $("#category-filter");
+  const detailEl = $("#detail-category");
+  const prevFilter = filterEl.value;
+  const prevDetail = detailEl.value;
+  filterEl.innerHTML = [`<option value="">Alle</option>`, ...cats.map(opt)].join("");
+  detailEl.innerHTML = cats.map(opt).join("") + `<option value="__new__">+ Neue Kategorie…</option>`;
+  if (prevFilter) filterEl.value = prevFilter;
+  if (prevDetail && prevDetail !== "__new__") detailEl.value = prevDetail;
+  setupBatchCategorySelect();
 }
 
 function bindEvents() {
@@ -350,12 +385,6 @@ function bindEvents() {
       applyGalleryView();
     });
   }
-
-  // ── Alte density-Buttons (Kompatibilität) ────────────────────────
-  $$(".density").forEach((btn) => btn.addEventListener("click", () => {
-    $$(".density").forEach((item) => item.classList.toggle("active", item === btn));
-    $("#gallery-grid").classList.toggle("compact", btn.dataset.density === "compact");
-  }));
 
   const drop = $("#drop-zone");
   $("#file-input").addEventListener("change", (e) => handleFiles(e.target.files));
@@ -418,6 +447,38 @@ function bindEvents() {
     detailNavigate(dx < 0 ? +1 : -1);
   }, { passive: true });
   $("#detail-form").addEventListener("submit", saveDetails);
+
+  // ── Eigene Kategorie anlegen ─────────────────────────────────────
+  $("#detail-category").addEventListener("change", () => {
+    const sel = $("#detail-category");
+    if (sel.value !== "__new__") return;
+    const name = prompt("Name der neuen Kategorie:");
+    const clean = addCustomCategory(name);
+    setupCategorySelects();
+    const photo = getSelected();
+    sel.value = clean || (photo && photo.category) || DEFAULT_CATEGORIES[0];
+  });
+
+  // ── Tag-Vorschläge (Chips) ───────────────────────────────────────
+  const presetBox = $("#tag-presets");
+  if (presetBox) {
+    TAG_PRESETS.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "tag-preset-chip";
+      chip.textContent = tag;
+      chip.addEventListener("click", () => {
+        const input = $("#detail-tags");
+        const tags = input.value.split(",").map((t) => t.trim()).filter(Boolean);
+        const idx = tags.findIndex((t) => t.toLowerCase() === tag.toLowerCase());
+        if (idx >= 0) tags.splice(idx, 1); else tags.push(tag);
+        input.value = tags.join(", ");
+        chip.classList.toggle("active", idx < 0);
+      });
+      presetBox.appendChild(chip);
+    });
+  }
+
   $("#favorite-toggle").addEventListener("click", toggleSelectedFavorite);
   $("#delete-photo").addEventListener("click", deleteSelected);
   $("#rotate-left").addEventListener("click", () => editImage({ rotation: state.edit.rotation - 90 }));
@@ -468,7 +529,7 @@ function updateSortDirButton() {
   const btn = $("#sort-dir");
   if (!btn) return;
   btn.textContent = state.sortDir === "desc" ? "↓ Neu→Alt" : "↑ Alt→Neu";
-  const fieldLabels = { date: "Datum", year: "Jahr", uploaded: "Upload", name: "Name", category: "Kategorie" };
+  const fieldLabels = { date: "Datum", year: "Jahr", uploaded: "Upload", name: "Name", category: "Kategorie", favorites: "Favoriten", edited: "Bearbeitet" };
   const label = fieldLabels[state.sortField] || state.sortField;
   btn.title = `Sortierung: ${label} ${state.sortDir === "desc" ? "absteigend" : "aufsteigend"} — klicken zum Umkehren`;
 }
@@ -499,6 +560,18 @@ function getSortValue(photo, field) {
       return (photo.title || photo.name || "").toLowerCase();
     case "category":
       return (photo.category || "").toLowerCase();
+    case "favorites": {
+      // Favoriten zuerst, innerhalb der Gruppe nach Datum
+      const raw = photo.takenAt || photo.createdAt || null;
+      const ts = raw ? new Date(raw).getTime() : 0;
+      return (photo.favorite ? 1e15 : 0) + (isNaN(ts) ? 0 : ts);
+    }
+    case "edited": {
+      const raw = photo.editedAt || photo.updatedAt || photo.createdAt || null;
+      if (!raw) return 0;
+      const ts = new Date(raw).getTime();
+      return isNaN(ts) ? 0 : ts;
+    }
     default:
       return 0;
   }
@@ -682,6 +755,34 @@ async function testCloudConnection() {
   }
 }
 
+// Metadaten (Titel, Kategorie, Tags, Favorit ...) in der Cloud persistieren.
+// Fire-and-forget mit Konsolen-Warnung bei Fehler.
+function syncMetadataToCloud(photo) {
+  const endpoint = getApiEndpoint();
+  if (!endpoint || !photo || !photo.id) return Promise.resolve();
+  return fetchWithTimeout(`${endpoint}/api/user-edits`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: photo.id, edits: cloudSafeMetadata(photo) })
+  }, 15000).catch((e) => console.warn("[Metadaten-Sync]", e.message));
+}
+
+// ─── Globales Toast (Bestätigungen / Fehlermeldungen) ─────────────
+function showToast(msg, isError = false) {
+  let toast = $("#app-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "app-toast";
+    toast.className = "app-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.toggle("error", isError);
+  toast.classList.add("visible");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove("visible"), 2600);
+}
+
 async function autoSyncFromCloud() {
   const endpoint = getApiEndpoint();
   if (!endpoint) return;
@@ -752,14 +853,13 @@ async function syncFromCloud(options = {}) {
     } catch {}
   }
 
-  // Lokal → Cloud hochladen (falls lokale Liste mehr hat als Cloud)
+  // Lokal → Cloud hochladen: alle IDs nachtragen, die der Cloud fehlen
   // z.B. wenn Laptop gelöscht hat aber Render schlief
-  if (localDeletedArr.length > cloudDeleted.length) {
-    for (const id of localDeletedArr) {
-      if (!cloudDeleted.includes(id)) {
-        fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
-          { method: "DELETE" }).catch(() => {});
-      }
+  const cloudDeletedSet = new Set(cloudDeleted);
+  for (const id of localDeletedArr) {
+    if (!cloudDeletedSet.has(id)) {
+      fetch(`${endpoint}/api/user-edits/${encodeURIComponent(id)}`,
+        { method: "DELETE" }).catch(() => {});
     }
   }
 
@@ -802,7 +902,23 @@ async function syncFromCloud(options = {}) {
     };
     // Foto überspringen wenn keine gültige URL vorhanden
     if (!merged.dataUrl || merged.dataUrl.length < 10) continue;
-    if (existing) { Object.assign(existing, merged); await savePhoto(existing); }
+    if (existing) {
+      // Lokale Bearbeitung ist neuer als der Cloud-Stand → lokal behalten,
+      // sonst würde eine noch nicht hochgeladene Bearbeitung überschrieben
+      const localTime = new Date(existing.editedAt || 0).getTime();
+      const cloudTime = new Date(merged.editedAt || 0).getTime();
+      if (existing.dataUrl && existing.dataUrl.startsWith("data:") && localTime > cloudTime) {
+        // Nur Metadaten-Felder übernehmen, Bild lokal lassen
+        const { dataUrl, editedAt, ...metaOnly } = merged;
+        Object.assign(existing, metaOnly);
+      } else {
+        // Bild hat sich in der Cloud geändert → altes Thumbnail verwerfen
+        // (nur über editedAt vergleichen — signierte URLs ändern sich bei jedem Sync)
+        if (existing.editedAt !== merged.editedAt) delete existing.thumbUrl;
+        Object.assign(existing, merged);
+      }
+      await savePhoto(existing);
+    }
     else { await savePhoto(merged); state.photos.push(merged); imported++; }
   }
   // ── Fotos bereinigen ────────────────────────────────────────────
@@ -831,9 +947,11 @@ async function syncFromCloud(options = {}) {
   }
 
   state.photos = await getAllPhotos();
+  setupCategorySelects();
   render();
   if (!options.silent) switchView("gallery");
   setCloudStatus(`✓ Sync abgeschlossen. ${imported} neue Bilder. Insgesamt: ${state.photos.length}.`, "#27ae60");
+  generateMissingThumbnails();
 }
 
 // ─── Upload ───────────────────────────────────────────────────────
@@ -886,7 +1004,24 @@ async function handleFiles(fileList) {
   const endpoint = getApiEndpoint();
   if (endpoint) wakeUpRender(endpoint);
 
+  // Fortschrittsanzeige initialisieren
+  const progressBox  = $("#upload-progress");
+  const progressText = $("#upload-progress-text");
+  const progressPct  = $("#upload-progress-pct");
+  const progressFill = $("#upload-progress-fill");
+  let done = 0;
+  const updateProgress = () => {
+    if (!progressBox) return;
+    const pct = Math.round((done / files.length) * 100);
+    progressBox.classList.remove("hidden");
+    if (progressText) progressText.textContent = `${done} / ${files.length} Fotos`;
+    if (progressPct)  progressPct.textContent  = `${pct}%`;
+    if (progressFill) progressFill.style.width = `${pct}%`;
+  };
+  updateProgress();
+
   for (const file of files) {
+    try {
     const item = document.createElement("div");
     item.className = "upload-item";
     item.innerHTML = `<span>${escapeHtml(file.name)}</span><strong>Lese Datei...</strong>`;
@@ -961,9 +1096,17 @@ async function handleFiles(fileList) {
         console.error("[Cloud-Upload]", file.name, error);
       }
     }
+    } finally {
+      done++;
+      updateProgress();
+    }
   }
+  // Fortschrittsbalken nach kurzer Zeit ausblenden
+  if (progressBox) setTimeout(() => progressBox.classList.add("hidden"), 2500);
+  setupCategorySelects();
   render();
   switchView("gallery");
+  showToast(`✓ ${files.length} Foto${files.length === 1 ? "" : "s"} hochgeladen`);
 }
 
 
@@ -1002,7 +1145,7 @@ async function uploadPhotoToCloud(file, photo) {
   if (!endpoint) return null;
   const form = new FormData();
   form.append("image", file, file.name);
-  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  form.append("metadata", JSON.stringify(cloudSafeMetadata(photo)));
   const res = await fetchWithTimeout(`${endpoint}/api/photos/upload`, { method: "POST", body: form }, 45000);
   return res.json();
 }
@@ -1012,7 +1155,7 @@ async function uploadEditedImageToCloud(blob, photo) {
   if (!endpoint) return null;
   const form = new FormData();
   form.append("image", blob, photo.name || "edited-image.jpg");
-  form.append("metadata", JSON.stringify(withoutDataUrl(photo)));
+  form.append("metadata", JSON.stringify(cloudSafeMetadata(photo)));
   if (photo.cloudObject) form.append("replaceObjectName", photo.cloudObject);
   const res = await fetchWithTimeout(`${endpoint}/api/photos/upload`, { method: "POST", body: form }, 45000);
   return res.json();
@@ -1056,7 +1199,11 @@ function readAsDataUrl(file) {
 }
 
 async function createLocalPreview(file) {
-  return readAsDataUrl(file);
+  const dataUrl = await readAsDataUrl(file);
+  // Lokale Kopie auf max. 2000px begrenzen — schont IndexedDB und Speicher
+  // auf dem iPhone. Das unveränderte Original wird in die Cloud hochgeladen.
+  try { return await resizeDataUrl(dataUrl, 2000, normalizeImageType(file.type), 0.88); }
+  catch { return dataUrl; }
 }
 
 function createThumbnail(dataUrl, type) {
@@ -1200,7 +1347,8 @@ function suggestTags(name) {
 function render() {
   state.filtered = sortPhotos(filterPhotos());
   renderGallery();
-  renderStats();
+  // Statistiken nur berechnen wenn sichtbar — spart Re-Renders
+  if (state.activeView === "stats") renderStats();
 }
 
 function filterPhotos() {
@@ -1214,13 +1362,13 @@ function filterPhotos() {
     const date = new Date(photo.takenAt);
     const haystack = [photo.title, photo.name, photo.category, photo.description, photo.camera, ...(photo.tags || [])].join(" ").toLowerCase();
     if (state.quick === "favorites" && !photo.favorite) return false;
-    if (state.quick === "untagged" && photo.tags.length) return false;
+    if (state.quick === "untagged" && (photo.tags || []).length) return false;
     if (state.quick === "thisMonth" && (date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear())) return false;
     if (query && !haystack.includes(query)) return false;
     if (from && date < from) return false;
     if (to && date > to) return false;
     if (category && photo.category !== category) return false;
-    if (tag && !photo.tags.some((t) => t.toLowerCase().includes(tag))) return false;
+    if (tag && !(photo.tags || []).some((t) => t.toLowerCase().includes(tag))) return false;
     return true;
   });
 }
@@ -1259,11 +1407,15 @@ function renderGallery() {
       if (!confirm("Dieses Foto wirklich löschen?")) return;
       await removePhoto(photo.id);
       state.photos = state.photos.filter((item) => item.id !== photo.id);
+      deleteFromCloud(photo);
       render();
+      showToast("🗑 Foto gelöscht");
     });
     node.querySelector(".favorite-star").addEventListener("click", async () => {
       photo.favorite = !photo.favorite;
+      photo.updatedAt = new Date().toISOString();
       await savePhoto(photo);
+      syncMetadataToCloud(photo);
       render();
     });
     const tagRow = node.querySelector(".tag-row");
@@ -1289,6 +1441,9 @@ function getDisplayImageUrl(photo, thumb) {
   if (thumb && photo.thumbUrl) return photo.thumbUrl;
   if (!photo.dataUrl) return "";
   if (photo.dataUrl.startsWith("data:")) return photo.dataUrl;
+  // Signierte GCS-URLs dürfen NICHT verändert werden — zusätzliche
+  // Query-Parameter machen die Signatur ungültig (403)
+  if (/X-Goog-Signature|X-Goog-Credential/i.test(photo.dataUrl)) return photo.dataUrl;
   const sep = photo.dataUrl.includes("?") ? "&" : "?";
   return `${photo.dataUrl}${sep}v=${encodeURIComponent(photo.editedAt || photo.createdAt || "")}`;
 }
@@ -1318,6 +1473,11 @@ function openDetail(id) {
   $("#detail-description").value = photo.description || "";
   $("#detail-category").value = photo.category;
   $("#detail-tags").value = (photo.tags || []).join(", ");
+  // Preset-Chips entsprechend der vorhandenen Tags markieren
+  const currentTags = (photo.tags || []).map((t) => t.toLowerCase());
+  $$(".tag-preset-chip").forEach((chip) => {
+    chip.classList.toggle("active", currentTags.includes(chip.textContent.toLowerCase()));
+  });
   $("#detail-date").value = toLocalInput(photo.takenAt);
   $("#detail-camera").textContent = photo.camera || "-";
   $("#detail-file").textContent = photo.name;
@@ -1353,23 +1513,17 @@ async function saveDetails(event) {
   photo.description = $("#detail-description").value.trim();
   photo.category = $("#detail-category").value;
   photo.tags = $("#detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
-  photo.takenAt = new Date($("#detail-date").value).toISOString();
-  await savePhoto(photo);
-  // Metadaten in Cloud speichern via user-edits
-  if (photo.id && getApiEndpoint()) {
-    try {
-      await fetchWithTimeout(`${getApiEndpoint()}/api/user-edits`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: photo.id, edits: withoutDataUrl(photo) })
-      }, 15000);
-    } catch (e) {
-      console.warn("[Metadaten-Sync]", e.message);
-    }
+  const dateValue = $("#detail-date").value;
+  if (dateValue && !isNaN(new Date(dateValue).getTime())) {
+    photo.takenAt = new Date(dateValue).toISOString();
   }
+  photo.updatedAt = new Date().toISOString();
+  await savePhoto(photo);
+  syncMetadataToCloud(photo);
   state.photos = await getAllPhotos();
   render();
   closeDetail();
+  showToast("✓ Details gespeichert");
 }
 
 function getSelected() { return state.photos.find((p) => p.id === state.selectedId); }
@@ -1378,7 +1532,9 @@ async function toggleSelectedFavorite() {
   const photo = getSelected();
   if (!photo) return;
   photo.favorite = !photo.favorite;
+  photo.updatedAt = new Date().toISOString();
   await savePhoto(photo);
+  syncMetadataToCloud(photo);
   $("#favorite-toggle").textContent = photo.favorite ? "★ Favorit" : "☆ Favorit";
   render();
 }
@@ -1433,51 +1589,150 @@ async function drawSelectedImage() {
     ctx.rotate(rad);
     ctx.drawImage(img, -img.width / 2, -img.height / 2);
     ctx.restore();
+    // Live-Vorschau über CSS-Filter (schnell, ruckelfrei) —
+    // beim Speichern werden die Filter in bakeFiltersIntoCanvas() eingebrannt
     const filters = [];
     if (brightness !== 100) filters.push(`brightness(${brightness}%)`);
     if (contrast !== 100) filters.push(`contrast(${contrast}%)`);
     if (saturation !== 100) filters.push(`saturate(${saturation}%)`);
     if (filter === "warm") filters.push("sepia(30%) saturate(130%)");
     if (filter === "mono") filters.push("grayscale(100%)");
-    if (filters.length) {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      canvas.style.filter = filters.join(" ");
-      ctx.putImageData(imageData, 0, 0);
-    } else { canvas.style.filter = ""; }
+    canvas.style.filter = filters.join(" ");
   };
   img.src = src;
+}
+
+// Prüft ob der Browser Filter direkt auf dem Canvas-Kontext unterstützt
+// (Safari/iOS lange nicht — dort pixelbasierter Fallback)
+function supportsCanvasFilter() {
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (typeof ctx.filter !== "string") return false;
+  ctx.filter = "brightness(50%)";
+  return ctx.filter !== "none" && ctx.filter !== "";
+}
+
+// Wendet die aktuellen Bearbeitungs-Filter dauerhaft auf einen Canvas an.
+// Nutzt ctx.filter wenn verfügbar, sonst manuelle Pixel-Berechnung (Safari).
+function bakeFiltersIntoCanvas(canvas, edit) {
+  const { brightness, contrast, saturation, filter } = edit;
+  const hasAdjust = brightness !== 100 || contrast !== 100 || saturation !== 100;
+  const hasPreset = filter === "warm" || filter === "mono";
+  if (!hasAdjust && !hasPreset) return canvas;
+
+  if (supportsCanvasFilter()) {
+    const filters = [];
+    if (brightness !== 100) filters.push(`brightness(${brightness}%)`);
+    if (contrast !== 100) filters.push(`contrast(${contrast}%)`);
+    if (saturation !== 100) filters.push(`saturate(${saturation}%)`);
+    if (filter === "warm") filters.push("sepia(30%) saturate(130%)");
+    if (filter === "mono") filters.push("grayscale(100%)");
+    const out = document.createElement("canvas");
+    out.width = canvas.width; out.height = canvas.height;
+    const ctx = out.getContext("2d");
+    ctx.filter = filters.join(" ");
+    ctx.drawImage(canvas, 0, 0);
+    return out;
+  }
+
+  // Pixel-Fallback — identische Reihenfolge wie die CSS-Filterkette
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  const b = brightness / 100;
+  const c = contrast / 100;
+  const s = saturation / 100;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], bl = d[i + 2];
+    // Helligkeit
+    if (b !== 1) { r *= b; g *= b; bl *= b; }
+    // Kontrast (um 128 zentriert)
+    if (c !== 1) { r = (r - 128) * c + 128; g = (g - 128) * c + 128; bl = (bl - 128) * c + 128; }
+    // Sättigung (Luma-Interpolation, Rec. 709)
+    if (s !== 1) {
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      r = luma + (r - luma) * s; g = luma + (g - luma) * s; bl = luma + (bl - luma) * s;
+    }
+    if (filter === "warm") {
+      // sepia(30%) + saturate(130%)
+      const sr = r * 0.393 + g * 0.769 + bl * 0.189;
+      const sg = r * 0.349 + g * 0.686 + bl * 0.168;
+      const sb = r * 0.272 + g * 0.534 + bl * 0.131;
+      r = r * 0.7 + sr * 0.3; g = g * 0.7 + sg * 0.3; bl = bl * 0.7 + sb * 0.3;
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      r = luma + (r - luma) * 1.3; g = luma + (g - luma) * 1.3; bl = luma + (bl - luma) * 1.3;
+    } else if (filter === "mono") {
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      r = g = bl = luma;
+    }
+    d[i]     = r < 0 ? 0 : r > 255 ? 255 : r;
+    d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+    d[i + 2] = bl < 0 ? 0 : bl > 255 ? 255 : bl;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+// Erzeugt nach einer Bildänderung ein frisches Thumbnail
+async function refreshThumbnail(photo) {
+  try {
+    const thumb = await createThumbnail(photo.dataUrl.startsWith("data:")
+      ? photo.dataUrl
+      : await loadImageAsDataUrl(getDisplayImageUrl(photo)), photo.type);
+    if (thumb) photo.thumbUrl = thumb; else delete photo.thumbUrl;
+  } catch { delete photo.thumbUrl; }
 }
 
 async function saveEditedImage() {
   const photo = getSelected();
   if (!photo) return;
-  const canvas = $("#edit-canvas");
-  const filterStr = canvas.style.filter || "";
-  let dataUrl;
-  if (filterStr) {
-    const offscreen = document.createElement("canvas");
-    offscreen.width = canvas.width; offscreen.height = canvas.height;
-    const offCtx = offscreen.getContext("2d");
-    offCtx.filter = filterStr;
-    offCtx.drawImage(canvas, 0, 0);
-    dataUrl = offscreen.toDataURL(photo.type || "image/jpeg", 0.9);
-  } else {
-    dataUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.9);
-  }
-  photo.dataUrl = dataUrl;
-  photo.editedAt = new Date().toISOString();
-  if (photo.cloudObject && getApiEndpoint()) {
+  const saveBtn = $("#save-edit");
+  const originalLabel = saveBtn.textContent;
+  saveBtn.disabled = true;
+  saveBtn.textContent = "⏳ Speichere...";
+
+  try {
+    const canvas = $("#edit-canvas");
+    // Transformierten Canvas kopieren und Filter dauerhaft einbrennen
+    const working = document.createElement("canvas");
+    working.width = canvas.width; working.height = canvas.height;
+    working.getContext("2d").drawImage(canvas, 0, 0);
+    const finalCanvas = bakeFiltersIntoCanvas(working, state.edit);
+    const dataUrl = finalCanvas.toDataURL(photo.type || "image/jpeg", 0.9);
+
+    photo.dataUrl = dataUrl;
+    photo.editedAt = new Date().toISOString();
+    photo.updatedAt = photo.editedAt;
+
+    let cloudOk = true;
+    if (photo.cloudObject && getApiEndpoint()) {
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const cloud = await uploadEditedImageToCloud(blob, photo);
+        if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
+      } catch (e) {
+        cloudOk = false;
+        console.warn("[Cloud-Edit-Upload]", e.message);
+      }
+    }
+
+    // Thumbnail neu erzeugen, damit die Galerie das bearbeitete Bild zeigt
+    photo.thumbUrl = null;
     try {
-      const blob = await (await fetch(dataUrl)).blob();
-      const cloud = await uploadEditedImageToCloud(blob, photo);
-      if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
-    } catch (e) { console.warn("[Cloud-Edit-Upload]", e.message); }
+      const thumb = await createThumbnail(dataUrl, photo.type);
+      if (thumb) photo.thumbUrl = thumb;
+    } catch {}
+
+    await savePhoto(photo);
+    syncMetadataToCloud(photo);
+    state.photos = await getAllPhotos();
+    resetEditState();
+    render();
+    closeDetail();
+    showToast(cloudOk ? "✓ Bild gespeichert" : "⚠ Lokal gespeichert — Cloud-Upload fehlgeschlagen", !cloudOk);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
   }
-  await savePhoto(photo);
-  state.photos = await getAllPhotos();
-  resetEditState();
-  render();
-  closeDetail();
 }
 
 // ─── Stats ───────────────────────────────────────────────────────
@@ -1659,7 +1914,32 @@ async function exportZip() {
   }
 }
 
-function withoutDataUrl(photo) { const { dataUrl, ...meta } = photo; return meta; }
+// Entfernt alle großen Base64-Felder — für Export und lokale Zwecke
+function withoutDataUrl(photo) {
+  const { dataUrl, thumbUrl, cropHistory, originalDataUrl, localSaveWarning, ...meta } = photo;
+  return meta;
+}
+
+// Schlanke Whitelist für Cloud-Metadaten (GCS erlaubt nur 8 KB Metadaten pro Objekt,
+// user-edits.json darf nicht mit Base64-Daten aufgebläht werden)
+function cloudSafeMetadata(photo) {
+  return {
+    id: photo.id,
+    name: photo.name,
+    type: photo.type,
+    title: photo.title || "",
+    description: photo.description || "",
+    category: photo.category || "",
+    tags: Array.isArray(photo.tags) ? photo.tags : [],
+    favorite: photo.favorite === true,
+    camera: photo.camera || "",
+    takenAt: photo.takenAt || "",
+    createdAt: photo.createdAt || "",
+    editedAt: photo.editedAt || "",
+    cloudObject: photo.cloudObject || "",
+    fileHash: photo.fileHash || ""
+  };
+}
 
 function base64ToUint8(dataUrl) {
   const base64 = dataUrl.split(",")[1];
@@ -1864,7 +2144,7 @@ function setupBatchCategorySelect() {
   const sel = $("#batch-category");
   if (!sel) return;
   sel.innerHTML = `<option value="">Kategorie setzen…</option>` +
-    categories.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    getCategories().map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
 }
 
 function startBatchMode() {
@@ -1909,7 +2189,12 @@ function batchSetFavorite(value) {
   // Karten im DOM direkt aktualisieren + in DB speichern
   state.selectedIds.forEach((id) => {
     const photo = state.photos.find((p) => p.id === id);
-    if (photo) { photo.favorite = value; savePhoto(photo); }
+    if (photo) {
+      photo.favorite = value;
+      photo.updatedAt = new Date().toISOString();
+      savePhoto(photo);
+      syncMetadataToCloud(photo);
+    }
   });
   render();
 }
@@ -1937,15 +2222,9 @@ async function batchApply() {
       addTags.forEach((t) => existing.add(t));
       photo.tags = Array.from(existing);
     }
+    photo.updatedAt = new Date().toISOString();
     await savePhoto(photo);
-    // Metadaten in Cloud synchronisieren
-    if (photo.id && getApiEndpoint()) {
-      fetchWithTimeout(`${getApiEndpoint()}/api/user-edits`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: photo.id, edits: withoutDataUrl(photo) })
-      }, 10000).catch(() => {});
-    }
+    syncMetadataToCloud(photo);
   }
 
   // Eingaben zurücksetzen
@@ -2008,9 +2287,18 @@ function updateCropHistoryButtons() {
 function updateCropFrame() {
   const img   = $("#lightbox-img");
   const frame = $("#crop-frame");
+  const overlay = $("#crop-overlay");
   if (!img || !frame) return;
-  const iw = img.naturalWidth  || img.offsetWidth;
-  const ih = img.naturalHeight || img.offsetHeight;
+
+  // Overlay exakt über das Bild legen (nicht über den ganzen Container) —
+  // sonst stimmen die Crop-Koordinaten nicht, wenn das Bild kleiner ist
+  if (overlay) {
+    overlay.style.left   = img.offsetLeft + "px";
+    overlay.style.top    = img.offsetTop  + "px";
+    overlay.style.width  = img.offsetWidth  + "px";
+    overlay.style.height = img.offsetHeight + "px";
+    overlay.style.inset  = "auto";
+  }
   const ratio = state.cropRatio;
 
   // Startrahmen: 80% des Bildes, proportional
@@ -2054,6 +2342,8 @@ function enableCropDrag(img, frame, ratio) {
     return rw / rh;
   };
 
+  const onTouchMove = (ev) => onMove(ev.touches[0]);
+
   f.addEventListener("mousedown", startDrag);
   f.addEventListener("touchstart", (e) => startDrag(e.touches[0]), { passive: true });
 
@@ -2071,7 +2361,7 @@ function enableCropDrag(img, frame, ratio) {
     startL = parseFloat(f.style.left); startT = parseFloat(f.style.top);
     startW = parseFloat(f.style.width); startH = parseFloat(f.style.height);
     document.addEventListener("mousemove", onMove);
-    document.addEventListener("touchmove", (ev) => onMove(ev.touches[0]), { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
     document.addEventListener("mouseup",  endDrag);
     document.addEventListener("touchend", endDrag);
   }
@@ -2105,7 +2395,9 @@ function enableCropDrag(img, frame, ratio) {
   function endDrag() {
     dragging = false; resizing = false;
     document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("touchmove", onTouchMove);
     document.removeEventListener("mouseup",  endDrag);
+    document.removeEventListener("touchend", endDrag);
   }
 }
 
@@ -2153,21 +2445,32 @@ async function applyCrop() {
 
   photo.dataUrl  = dataUrl;
   photo.editedAt = new Date().toISOString();
+  photo.updatedAt = photo.editedAt;
 
   // In Cloud hochladen
+  let cloudOk = true;
   if (photo.cloudObject && getApiEndpoint()) {
     try {
       const blob = await (await fetch(dataUrl)).blob();
       const cloud = await uploadEditedImageToCloud(blob, photo);
       if (cloud) { photo.cloudUrl = cloud.url; photo.dataUrl = cloud.url; }
-    } catch (e) { console.warn("[Crop-Upload]", e); }
+    } catch (e) { cloudOk = false; console.warn("[Crop-Upload]", e); }
   }
 
+  // Thumbnail neu erzeugen — Galerie soll das zugeschnittene Bild zeigen
+  photo.thumbUrl = null;
+  try {
+    const thumb = await createThumbnail(dataUrl, photo.type);
+    if (thumb) photo.thumbUrl = thumb;
+  } catch {}
+
   await savePhoto(photo);
+  syncMetadataToCloud(photo);
   state.photos = await getAllPhotos();
   toggleCropMode(false);
   showLightboxPhoto(); // aktualisiertes Bild anzeigen
   render();
+  showToast(cloudOk ? "✓ Zuschnitt gespeichert" : "⚠ Lokal gespeichert — Cloud-Upload fehlgeschlagen", !cloudOk);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2246,12 +2549,14 @@ async function cropUndo() {
   const prevUrl = photo.cropHistory.pop();      // letzten Stand holen
   photo.dataUrl  = prevUrl;
   photo.editedAt = new Date().toISOString();
+  photo.updatedAt = photo.editedAt;
 
   // Wenn History leer und originalDataUrl === aktueller Stand → original aufräumen
   if (!photo.cropHistory.length && photo.originalDataUrl === prevUrl) {
     delete photo.originalDataUrl;
   }
 
+  await refreshThumbnail(photo);
   await savePhoto(photo);
   state.photos = await getAllPhotos();
   showLightboxPhoto();              // Lightbox-Bild aktualisieren
@@ -2266,6 +2571,7 @@ async function cropRestoreOriginal() {
 
   photo.dataUrl     = photo.originalDataUrl;
   photo.editedAt    = new Date().toISOString();
+  photo.updatedAt   = photo.editedAt;
   photo.cropHistory = [];
   delete photo.originalDataUrl;
 
@@ -2278,81 +2584,12 @@ async function cropRestoreOriginal() {
     } catch (e) { console.warn("[Crop-Original-Upload]", e); }
   }
 
+  await refreshThumbnail(photo);
   await savePhoto(photo);
   state.photos = await getAllPhotos();
   showLightboxPhoto();
   updateCropHistoryButtons();
   render();
-}
-
-// ─── Lazy Load + Auto-Thumbnail ───────────────────────────────────
-
-let _lazyObserver = null;
-
-function startLazyLoad() {
-  // Alte Observer aufräumen
-  if (_lazyObserver) _lazyObserver.disconnect();
-
-  const lazyImgs = Array.from(document.querySelectorAll("img.lazy[data-src]"));
-  if (!lazyImgs.length) return;
-
-  _lazyObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      const img = entry.target;
-      const src = img.dataset.src;
-      if (!src) return;
-      _lazyObserver.unobserve(img);
-      img.classList.remove("lazy");
-
-      // Thumbnail erstellen und cachen
-      _loadAndThumb(img, src);
-    });
-  }, { rootMargin: "200px" }); // 200px vor dem Viewport schon laden
-
-  lazyImgs.forEach((img) => _lazyObserver.observe(img));
-}
-
-async function _loadAndThumb(imgEl, src) {
-  // Bild-ID aus der Card holen
-  const card = imgEl.closest("[data-id]");
-  const photoId = card ? card.dataset.id : null;
-
-  // Sofort die volle URL zeigen (damit Bild erscheint)
-  imgEl.src = src;
-
-  // Thumbnail im Hintergrund erstellen und speichern
-  if (!photoId) return;
-  const photo = state.photos.find((p) => p.id === photoId);
-  if (!photo || photo.thumbUrl) return; // schon vorhanden
-
-  // Warte bis img geladen ist
-  await new Promise((resolve) => {
-    if (imgEl.complete && imgEl.naturalWidth > 0) { resolve(); return; }
-    imgEl.onload  = resolve;
-    imgEl.onerror = resolve;
-  });
-
-  // Thumbnail aus dem bereits geladenen img-Element erstellen
-  try {
-    const maxEdge = 400;
-    const ratio = Math.min(1, maxEdge / Math.max(imgEl.naturalWidth, imgEl.naturalHeight));
-    if (ratio >= 1) {
-      // Bild ist schon klein — URL direkt als thumbUrl speichern
-      photo.thumbUrl = src.startsWith("data:") ? src : null;
-    } else {
-      const canvas = document.createElement("canvas");
-      canvas.width  = Math.round(imgEl.naturalWidth  * ratio);
-      canvas.height = Math.round(imgEl.naturalHeight * ratio);
-      canvas.getContext("2d").drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-      photo.thumbUrl = canvas.toDataURL(photo.type || "image/jpeg", 0.75);
-    }
-    if (photo.thumbUrl) {
-      await savePhoto(photo).catch(() => {});
-      // img src auf Thumbnail umschalten für nächsten Render
-      imgEl.src = photo.thumbUrl;
-    }
-  } catch { /* ignorieren */ }
 }
 
 // ─── Batch Thumbnail Generator ────────────────────────────────────

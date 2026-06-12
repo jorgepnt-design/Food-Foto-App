@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#2f6f63" />
   <meta name="apple-mobile-web-app-title" content="Foodporn" />
   <title>Foodporn - Food Foto Organizer</title>
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-1780220157-2" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-1780220157-2" />
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-1780220157-2" />
-  <link rel="manifest" href="site.webmanifest?v=foodporn-1780220157-2" />
-  <link rel="stylesheet" href="styles.css?v=foodporn-1780220157" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=foodporn-20260612-1" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=foodporn-20260612-1" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=foodporn-20260612-1" />
+  <link rel="manifest" href="site.webmanifest?v=foodporn-20260612-1" />
+  <link rel="stylesheet" href="styles.css?v=foodporn-20260612-1" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -40,7 +40,7 @@
 
       <section class="sidebar-section storage-note">
         <h2 data-i18n="storage">Speicherung</h2>
-        <p data-i18n="storageText">Lokal in IndexedDB. Cloud-Anbindung ist vorbereitet.</p>
+        <p data-i18n="storageText">Cloud-Speicherung in Google Cloud Storage, lokaler Cache in IndexedDB.</p>
       </section>
     </aside>
 
@@ -77,6 +77,8 @@
               <option value="date">Aufnahmedatum</option>
               <option value="year">Jahr</option>
               <option value="uploaded">Hochgeladen am</option>
+              <option value="edited">Zuletzt bearbeitet</option>
+              <option value="favorites">Favoriten zuerst</option>
               <option value="name">Name</option>
               <option value="category">Kategorie</option>
             </select>
@@ -219,6 +221,7 @@
       <label><span data-i18n="description">Beschreibung</span><textarea id="detail-description" rows="3"></textarea></label>
       <label><span data-i18n="category">Kategorie</span><select id="detail-category"></select></label>
       <label><span data-i18n="tagsComma">Tags, mit Komma getrennt</span><input id="detail-tags" type="text" /></label>
+      <div id="tag-presets" class="tag-presets" aria-label="Tag-Vorschläge"></div>
       <label><span data-i18n="takenAt">Aufgenommen am</span><input id="detail-date" type="datetime-local" /></label>
       <div class="meta-list">
         <p><span>Kamera:</span> <strong id="detail-camera">-</strong></p>
@@ -302,7 +305,7 @@
     <button id="nav-bottom" title="Ganz nach unten" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
-  <script src="app.js?v=foodporn-1780220157" onerror="document.body.classList.add('script-failed')"></script>
+  <script src="app.js?v=foodporn-20260612-1" onerror="document.body.classList.add('script-failed')"></script>
   <script>
     // SW deregistrieren + alle Caches löschen
     if ("serviceWorker" in navigator) {

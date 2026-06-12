@@ -31,7 +31,21 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
+
+// Base64-Bilddaten und Verlaufs-Arrays haben in Metadaten nichts verloren —
+// sie sprengen das GCS-Metadaten-Limit (8 KB) und blähen user-edits.json auf
+const HEAVY_KEYS = ["dataUrl", "thumbUrl", "cropHistory", "originalDataUrl", "localSaveWarning"];
+function stripHeavyFields(obj) {
+  if (!obj || typeof obj !== "object") return {};
+  const clean = { ...obj };
+  for (const key of HEAVY_KEYS) delete clean[key];
+  // Sicherheitsnetz: überlange Strings (eingebettete Base64-Daten) entfernen
+  for (const [key, value] of Object.entries(clean)) {
+    if (typeof value === "string" && value.length > 2000) delete clean[key];
+  }
+  return clean;
+}
 
 app.get("/", (req, res) => {
   res.json({
@@ -68,7 +82,7 @@ app.post("/api/photos/upload", upload.single("image"), async (req, res, next) =>
     if (!req.file) return res.status(400).json({ error: "image file is required" });
     if (!req.file.mimetype.startsWith("image/")) return res.status(415).json({ error: "only image uploads are allowed" });
 
-    const metadata = parseMetadata(req.body.metadata);
+    const metadata = stripHeavyFields(parseMetadata(req.body.metadata));
     const objectName = req.body.replaceObjectName || buildObjectName(req.file.originalname);
     const file = bucket.file(objectName);
 
@@ -172,7 +186,7 @@ app.put("/api/user-edits", async (req, res, next) => {
     const { id, edits } = req.body;
     if (!id) return res.status(400).json({ error: "id is required" });
     const all = await readUserEdits();
-    all[id] = { ...(all[id] || {}), ...edits, updatedAt: new Date().toISOString() };
+    all[id] = { ...stripHeavyFields(all[id]), ...stripHeavyFields(edits), updatedAt: new Date().toISOString() };
     await writeUserEdits(all);
     res.json({ ok: true, id });
   } catch (error) { next(error); }
@@ -240,8 +254,10 @@ function parseMetadata(value) {
 function flattenMetadata(metadata) {
   return Object.fromEntries(
     Object.entries(metadata)
-      .filter(([, value]) => value !== undefined && value !== null)
+      .filter(([key, value]) => value !== undefined && value !== null && !HEAVY_KEYS.includes(key))
       .map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : String(value)])
+      // GCS erlaubt max. 8 KB Metadaten pro Objekt — überlange Werte kappen
+      .filter(([, value]) => value.length <= 1200)
   );
 }
 

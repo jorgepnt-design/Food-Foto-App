@@ -1,17 +1,20 @@
 :root {
-  --bg: #f4f2ec;
+  --bg: #f6f3ed;
   --surface: #ffffff;
   --surface-soft: #eef3ee;
   --text: #1c2521;
-  --muted: #647067;
-  --line: #d8ded7;
+  --muted: #5f6b63;
+  --line: #e0e4dc;
   --primary: #2f6f63;
   --primary-dark: #23544b;
   --accent: #c46c3d;
   --accent-soft: #fff0e8;
   --danger: #b42318;
   --shadow: 0 18px 48px rgba(28, 37, 33, 0.12);
-  --radius: 8px;
+  --shadow-card: 0 2px 12px rgba(28, 37, 33, 0.07);
+  --shadow-card-hover: 0 10px 28px rgba(28, 37, 33, 0.14);
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
 * { box-sizing: border-box; }
@@ -22,9 +25,15 @@ body {
   color: var(--text);
   font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
   letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 .app-shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
 .sidebar {
@@ -84,14 +93,18 @@ button { cursor: pointer; }
 }
 .primary-button, .secondary-button, .danger-button, .icon-button {
   min-height: 40px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
   padding: 0 14px;
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color: transparent;
 }
+.primary-button:active, .secondary-button:active, .danger-button:active { transform: scale(0.98); }
 .primary-button { background: var(--primary); border-color: var(--primary); color: white; font-weight: 700; }
 .primary-button:hover { background: var(--primary-dark); }
+.primary-button:disabled, .secondary-button:disabled { opacity: 0.6; cursor: wait; }
 .secondary-button:hover, .icon-button:hover { background: var(--surface-soft); }
 .danger-button { background: #fff4f2; border-color: #ffd0c9; color: var(--danger); }
 .icon-button { width: 40px; padding: 0; display: inline-grid; place-items: center; font-weight: 800; }
@@ -138,10 +151,18 @@ textarea { resize: vertical; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 8px 28px rgba(28, 37, 33, 0.08);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow .2s ease, transform .2s ease;
 }
-.photo-open { width: 100%; border: 0; padding: 0; background: #e8ebe5; display: block; aspect-ratio: 4 / 3; }
-.photo-open img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (hover: hover) {
+  .photo-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+  .photo-card:hover .photo-open img { transform: scale(1.04); }
+}
+.photo-open { width: 100%; border: 0; padding: 0; background: #e8ebe5; display: block; aspect-ratio: 4 / 3; overflow: hidden; }
+.photo-open img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
 .photo-info { display: flex; justify-content: space-between; gap: 10px; padding: 12px 12px 8px; }
 .photo-info h3, .photo-info p { margin: 0; }
 .photo-info h3 { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
@@ -1312,4 +1333,143 @@ img.lazy {
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Globales Toast (Speicher-Bestätigungen) ───────────────────
+   ═══════════════════════════════════════════════════════════════ */
+.app-toast {
+  position: fixed;
+  bottom: max(24px, env(safe-area-inset-bottom, 24px));
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: rgba(23, 37, 32, 0.95);
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  z-index: 2000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  max-width: 92vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.app-toast.error { background: rgba(140, 35, 25, 0.96); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Tag-Vorschläge (Preset-Chips im Detail-Panel) ─────────────
+   ═══════════════════════════════════════════════════════════════ */
+.tag-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -4px;
+}
+.tag-preset-chip {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  min-height: 32px;
+  transition: background .15s, color .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tag-preset-chip:hover { border-color: var(--primary); color: var(--primary); }
+.tag-preset-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Empty State — einladender gestalten ───────────────────────
+   ═══════════════════════════════════════════════════════════════ */
+.empty-state {
+  padding: 64px 24px;
+  border-style: dashed;
+  border-width: 2px;
+}
+.empty-state::before {
+  content: "🍽️";
+  display: block;
+  font-size: 3rem;
+  margin-bottom: 14px;
+}
+.empty-state h3 { font-size: 1.25rem; }
+.empty-state .primary-button { margin-top: 10px; min-height: 46px; padding: 0 22px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ─── Mobile: Bottom-Tab-Bar (App-Gefühl auf dem iPhone) ────────
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 680px) {
+  .nav-tabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 600;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    margin: 0;
+    background: rgba(13, 21, 18, 0.97);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.25);
+  }
+  .nav-tab {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 52px;
+    padding: 6px 4px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    color: #b7c5bd;
+  }
+  .nav-tab .icon { width: auto; font-size: 1.25rem; }
+  /* Auf Mobile die Tab-Beschriftung anzeigen (Desktop-Regel überschreiben) */
+  .nav-tab span:last-child { display: block; }
+  .nav-tab.active { color: #fff; background: rgba(255, 255, 255, 0.12); }
+  /* Platz für die Bottom-Bar freihalten */
+  .main { padding-bottom: 96px; }
+  .sidebar { padding-bottom: 8px; }
+  /* Side-Nav-Pfeile über der Tab-Bar positionieren */
+  #side-nav { top: auto; bottom: 110px; transform: none; }
+  /* Toast über der Tab-Bar anzeigen */
+  .app-toast { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+  /* Detail-Panel und Modals über der Tab-Bar */
+  .detail-panel { z-index: 700; padding-bottom: 40px; }
+  .modal { z-index: 800; }
+  .batch-toolbar { z-index: 590; }
+}
+
+/* Quick-Filter auf Mobile als horizontale Chip-Reihe */
+@media (max-width: 680px) {
+  .sidebar { gap: 14px; }
+  .sidebar-section { display: flex; flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
+  .sidebar-section h2 { display: none; }
+  .quick-filter {
+    min-height: 38px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border-color: rgba(255, 255, 255, 0.16);
+    padding: 8px 14px;
+    font-size: 0.85rem;
+  }
+  .quick-filter.active { background: var(--primary); border-color: var(--primary); }
 }
