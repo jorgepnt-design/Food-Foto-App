@@ -2759,15 +2759,38 @@ function buildDownloadFileName(photo, mimeType) {
   return `${base}.${ext}`;
 }
 
+// Zuletzt geladene Bilder merken — ein zweiter Tipp teilt dann sofort,
+// noch innerhalb von Safaris kurzem Zeitfenster für das Teilen-Menü
+const downloadCache = new Map();
+let downloadInProgress = false;
+
+function downloadCacheKey(photo) {
+  return `${photo.id}|${photo.editedAt || photo.updatedAt || ""}|${photo.cloudObject || ""}`;
+}
+
 async function downloadPhoto(photo) {
-  if (!photo) return;
-  showToast("⬇ Lade Bild in bester Auflösung…");
-  const preferredName = buildDownloadFileName(photo, photo.type);
-  const result = await getBestQualityBlob(photo, preferredName);
+  if (!photo || downloadInProgress) return;
+  const ios = isIOSDevice();
+  const key = downloadCacheKey(photo);
+
+  // iPhone: bereits geladenes Bild sofort teilen (keine Wartezeit → Safari erlaubt es)
+  if (ios && downloadCache.has(key)) {
+    await shareFileToPhotos(downloadCache.get(key));
+    return;
+  }
+
+  downloadInProgress = true;
+  const startedAt = Date.now();
+  let result;
+  try {
+    showToast("⬇ Lade Bild in bester Auflösung…");
+    result = await getBestQualityBlob(photo, buildDownloadFileName(photo, photo.type));
+  } finally { downloadInProgress = false; }
+
   if (!result) {
     // Letzter Ausweg: Bild direkt öffnen, damit es manuell gespeichert werden kann
     const url = photo.cloudUrl || getDisplayImageUrl(photo);
-    if (url && isIOSDevice()) { showLongPressSaveOverlay(url); return; }
+    if (url && ios) { showLongPressSaveOverlay(url); return; }
     if (url && !url.startsWith("data:")) {
       window.open(url, "_blank", "noopener");
       showToast("⚠ Direkter Download nicht möglich — Bild in neuem Tab geöffnet", true);
@@ -2780,24 +2803,40 @@ async function downloadPhoto(photo) {
 
   // iPhone/iPad: Ein normaler Download landet nur in der Dateien-App.
   // In die Fotos-Mediathek kommt ein Bild nur über das Teilen-Menü
-  // („Bild sichern“) — daher dort die Web Share API nutzen.
-  if (isIOSDevice()) {
+  // („Bild sichern“). Safari öffnet das Menü aber nur direkt nach einem
+  // Tipp — dauerte das Laden länger, braucht es einen zweiten Tipp.
+  if (ios) {
     const file = new File([result.blob], filename, { type: result.blob.type });
-    if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file] });
-        showToast("✓ Tippe auf „Bild sichern“, um es in Fotos zu speichern");
-      } catch (e) {
-        // Safari verlangt einen frischen Tipp, wenn das Laden länger gedauert hat
-        if (e && e.name === "NotAllowedError") showSaveToPhotosPrompt(file);
-        else if (!e || e.name !== "AbortError") { downloadBlob(result.blob, filename); }
-      }
-      return;
-    }
+    downloadCache.set(key, file);
+    while (downloadCache.size > 4) downloadCache.delete(downloadCache.keys().next().value);
+    if (Date.now() - startedAt < 700) await shareFileToPhotos(file);
+    else showSaveToPhotosPrompt(file);
+    return;
   }
 
   downloadBlob(result.blob, filename);
   showToast(result.fromCloud ? "✓ Download gestartet (Originalauflösung)" : "✓ Download gestartet (lokale Kopie)");
+}
+
+// Teilen-Menü öffnen; klappt das nicht, zuverlässige Alternativen anbieten
+async function shareFileToPhotos(file, fromPrompt = false) {
+  const canShareFile = typeof navigator.share === "function" &&
+    (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] }));
+  if (!canShareFile) { showLongPressSaveOverlay(URL.createObjectURL(file), true); return; }
+  try {
+    await navigator.share({ files: [file] });
+    document.querySelector(".save-photos-prompt")?.remove();
+    showToast("✓ Mit „Bild sichern“ landet es in Fotos");
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // Nutzer hat abgebrochen
+    console.warn("[Share]", e && e.name, e && e.message);
+    if (fromPrompt) {
+      document.querySelector(".save-photos-prompt")?.remove();
+      showLongPressSaveOverlay(URL.createObjectURL(file), true);
+    } else {
+      showSaveToPhotosPrompt(file);
+    }
+  }
 }
 
 function isIOSDevice() {
@@ -2808,7 +2847,7 @@ function isIOSDevice() {
 // Wenn das Bild nicht als Datei geladen werden kann (z. B. Cloud nicht
 // erreichbar): Bild groß anzeigen — iOS speichert per langem Drücken
 // („Zu Fotos hinzufügen“), dafür braucht es keinen Datei-Download.
-function showLongPressSaveOverlay(url) {
+function showLongPressSaveOverlay(url, revokeOnClose = false) {
   document.querySelector(".save-photos-overlay")?.remove();
   const box = document.createElement("div");
   box.className = "save-photos-overlay";
@@ -2816,7 +2855,10 @@ function showLongPressSaveOverlay(url) {
     <img alt="Foto" />
     <button type="button" class="secondary-button">Schließen</button>`;
   box.querySelector("img").src = url;
-  box.querySelector("button").addEventListener("click", () => box.remove());
+  box.querySelector("button").addEventListener("click", () => {
+    box.remove();
+    if (revokeOnClose) URL.revokeObjectURL(url);
+  });
   document.body.appendChild(box);
 }
 
@@ -2826,20 +2868,10 @@ function showSaveToPhotosPrompt(file) {
   document.querySelector(".save-photos-prompt")?.remove();
   const box = document.createElement("div");
   box.className = "save-photos-prompt";
-  box.innerHTML = `<p>Bild ist bereit (Originalauflösung)</p>
+  box.innerHTML = `<p>✓ Bild geladen (Originalauflösung)</p>
     <button type="button" class="primary-button save-photos-go">📲 In Fotos sichern</button>
     <button type="button" class="secondary-button save-photos-cancel">Abbrechen</button>`;
   document.body.appendChild(box);
   box.querySelector(".save-photos-cancel").addEventListener("click", () => box.remove());
-  box.querySelector(".save-photos-go").addEventListener("click", async () => {
-    try {
-      await navigator.share({ files: [file] });
-      box.remove();
-      showToast("✓ Tippe auf „Bild sichern“, um es in Fotos zu speichern");
-    } catch (e) {
-      if (e && e.name === "AbortError") { box.remove(); return; }
-      box.remove();
-      downloadBlob(file, file.name);
-    }
-  });
+  box.querySelector(".save-photos-go").addEventListener("click", () => shareFileToPhotos(file, true));
 }
