@@ -2719,11 +2719,35 @@ async function getBestQualityBlob(photo, filename) {
     try {
       const url = await getUrl();
       const res = await fetchWithTimeout(url, { cache: "no-store" }, 90000);
-      const blob = await res.blob();
-      if (blob.size > 0) return { blob, fromCloud: !url.startsWith("data:") };
+      let blob = await res.blob();
+      if (blob.size > 0) {
+        blob = await ensureImageMimeType(blob, photo.type);
+        if (!blob.type.startsWith("image/")) throw new Error(`kein Bild (${blob.type})`);
+        return { blob, fromCloud: !url.startsWith("data:") };
+      }
     } catch (e) { console.warn("[Download]", e.message); }
   }
   return null;
+}
+
+// iOS bietet „Bild sichern“ nur an, wenn die Datei als Bild erkannt wird.
+// Server/Buckets liefern manchmal application/octet-stream → Typ anhand
+// der ersten Bytes bestimmen.
+async function ensureImageMimeType(blob, fallbackType) {
+  if (blob.type && blob.type.startsWith("image/")) return blob;
+  const b = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const ascii = (from, to) => String.fromCharCode(...b.slice(from, to));
+  let type = "";
+  if (b[0] === 0xff && b[1] === 0xd8) type = "image/jpeg";
+  else if (b[0] === 0x89 && ascii(1, 4) === "PNG") type = "image/png";
+  else if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") type = "image/webp";
+  else if (ascii(0, 3) === "GIF") type = "image/gif";
+  else if (ascii(4, 8) === "ftyp") {
+    const brand = ascii(8, 12);
+    type = /avif|avis/.test(brand) ? "image/avif" : "image/heic";
+  }
+  if (!type && fallbackType && fallbackType.startsWith("image/") && blob.size > 1024 && !/^\s*[<{]/.test(ascii(0, 4))) type = fallbackType;
+  return type ? new Blob([blob], { type }) : blob;
 }
 
 function buildDownloadFileName(photo, mimeType) {
@@ -2743,6 +2767,7 @@ async function downloadPhoto(photo) {
   if (!result) {
     // Letzter Ausweg: Bild direkt öffnen, damit es manuell gespeichert werden kann
     const url = photo.cloudUrl || getDisplayImageUrl(photo);
+    if (url && isIOSDevice()) { showLongPressSaveOverlay(url); return; }
     if (url && !url.startsWith("data:")) {
       window.open(url, "_blank", "noopener");
       showToast("⚠ Direkter Download nicht möglich — Bild in neuem Tab geöffnet", true);
@@ -2757,7 +2782,7 @@ async function downloadPhoto(photo) {
   // In die Fotos-Mediathek kommt ein Bild nur über das Teilen-Menü
   // („Bild sichern“) — daher dort die Web Share API nutzen.
   if (isIOSDevice()) {
-    const file = new File([result.blob], filename, { type: result.blob.type || photo.type || "image/jpeg" });
+    const file = new File([result.blob], filename, { type: result.blob.type });
     if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file] });
@@ -2778,6 +2803,21 @@ async function downloadPhoto(photo) {
 function isIOSDevice() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+// Wenn das Bild nicht als Datei geladen werden kann (z. B. Cloud nicht
+// erreichbar): Bild groß anzeigen — iOS speichert per langem Drücken
+// („Zu Fotos hinzufügen“), dafür braucht es keinen Datei-Download.
+function showLongPressSaveOverlay(url) {
+  document.querySelector(".save-photos-overlay")?.remove();
+  const box = document.createElement("div");
+  box.className = "save-photos-overlay";
+  box.innerHTML = `<p>Bild <strong>lange gedrückt halten</strong> → „Zu Fotos hinzufügen“</p>
+    <img alt="Foto" />
+    <button type="button" class="secondary-button">Schließen</button>`;
+  box.querySelector("img").src = url;
+  box.querySelector("button").addEventListener("click", () => box.remove());
+  document.body.appendChild(box);
 }
 
 // Bild ist geladen, aber Safari hat das Teilen-Menü blockiert →

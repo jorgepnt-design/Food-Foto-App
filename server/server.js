@@ -166,7 +166,10 @@ app.get("/api/photos/download", async (req, res, next) => {
     const [metadata] = await file.getMetadata();
     const fallbackName = objectName.split("/").pop();
     const filename = String(req.query.filename || fallbackName).replace(/[\r\n"\\]/g, "").slice(0, 120) || fallbackName;
-    res.setHeader("Content-Type", metadata.contentType || "application/octet-stream");
+    const ext = objectName.split(".").pop().toLowerCase();
+    const typeByExt = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", heic: "image/heic", heif: "image/heif", avif: "image/avif" };
+    const contentType = (metadata.contentType || "").startsWith("image/") ? metadata.contentType : (typeByExt[ext] || "image/jpeg");
+    res.setHeader("Content-Type", contentType);
     if (metadata.size) res.setHeader("Content-Length", metadata.size);
     res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
