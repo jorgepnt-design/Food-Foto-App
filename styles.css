@@ -1475,25 +1475,8 @@ img.lazy {
   .quick-filter.active { background: var(--primary); border-color: var(--primary); }
 }
 
-/* ── iPhone: „In Fotos sichern“-Hinweis ── */
-.save-photos-prompt {
-  position: fixed;
-  left: 50%;
-  bottom: max(24px, env(safe-area-inset-bottom, 24px));
-  transform: translateX(-50%);
-  z-index: 3000;
-  width: min(92vw, 360px);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--surface, #fff);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  text-align: center;
-}
-.save-photos-prompt p { margin: 0; font-weight: 600; }
-.save-photos-overlay {
+/* ── iPhone: Sichern-Fenster ── */
+.save-sheet {
   position: fixed;
   inset: 0;
   z-index: 3000;
@@ -1501,18 +1484,33 @@ img.lazy {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   padding: max(20px, env(safe-area-inset-top, 20px)) 16px max(20px, env(safe-area-inset-bottom, 20px));
-  background: rgba(0, 0, 0, 0.92);
+  background: #000;
   color: #fff;
   text-align: center;
 }
-.save-photos-overlay img {
-  max-width: 100%;
-  max-height: 72vh;
+.save-sheet-img-wrap { display: flex; align-items: center; justify-content: center; width: 100%; }
+.save-sheet img {
+  display: block;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 290px);
+  max-height: calc(100dvh - 290px);
   object-fit: contain;
   border-radius: 10px;
   -webkit-touch-callout: default;
+  -webkit-user-select: auto;
   user-select: auto;
 }
-.save-photos-overlay p { margin: 0; }
+.save-sheet p { margin: 0; }
+.save-sheet-hint { font-size: 0.85rem; opacity: 0.75; }
+.save-sheet .primary-button, .save-sheet .secondary-button { width: min(calc(100vw - 32px), 360px); box-sizing: border-box; min-height: 48px; font-size: 1rem; }
+.save-sheet .primary-button:disabled { opacity: 0.5; }

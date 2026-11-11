@@ -2759,8 +2759,7 @@ function buildDownloadFileName(photo, mimeType) {
   return `${base}.${ext}`;
 }
 
-// Zuletzt geladene Bilder merken — ein zweiter Tipp teilt dann sofort,
-// noch innerhalb von Safaris kurzem Zeitfenster für das Teilen-Menü
+// Zuletzt geladene Bilder merken (iPhone: erneutes Sichern ohne Wartezeit)
 const downloadCache = new Map();
 let downloadInProgress = false;
 
@@ -2769,18 +2768,16 @@ function downloadCacheKey(photo) {
 }
 
 async function downloadPhoto(photo) {
-  if (!photo || downloadInProgress) return;
-  const ios = isIOSDevice();
-  const key = downloadCacheKey(photo);
+  if (!photo) return;
 
-  // iPhone: bereits geladenes Bild sofort teilen (keine Wartezeit → Safari erlaubt es)
-  if (ios && downloadCache.has(key)) {
-    await shareFileToPhotos(downloadCache.get(key));
-    return;
-  }
+  // iPhone/iPad: Ein normaler Download landet nur in der Dateien-App.
+  // In die Fotos-Mediathek kommt ein Bild nur über das Teilen-Menü oder
+  // langes Drücken. Safari öffnet das Teilen-Menü nur direkt nach einem
+  // Tipp — deshalb eigenes Sichern-Fenster: erst laden, dann tippen.
+  if (isIOSDevice()) { openIOSSaveSheet(photo); return; }
 
+  if (downloadInProgress) return;
   downloadInProgress = true;
-  const startedAt = Date.now();
   let result;
   try {
     showToast("⬇ Lade Bild in bester Auflösung…");
@@ -2788,9 +2785,7 @@ async function downloadPhoto(photo) {
   } finally { downloadInProgress = false; }
 
   if (!result) {
-    // Letzter Ausweg: Bild direkt öffnen, damit es manuell gespeichert werden kann
     const url = photo.cloudUrl || getDisplayImageUrl(photo);
-    if (url && ios) { showLongPressSaveOverlay(url); return; }
     if (url && !url.startsWith("data:")) {
       window.open(url, "_blank", "noopener");
       showToast("⚠ Direkter Download nicht möglich — Bild in neuem Tab geöffnet", true);
@@ -2799,79 +2794,89 @@ async function downloadPhoto(photo) {
     }
     return;
   }
-  const filename = buildDownloadFileName(photo, result.blob.type || photo.type);
-
-  // iPhone/iPad: Ein normaler Download landet nur in der Dateien-App.
-  // In die Fotos-Mediathek kommt ein Bild nur über das Teilen-Menü
-  // („Bild sichern“). Safari öffnet das Menü aber nur direkt nach einem
-  // Tipp — dauerte das Laden länger, braucht es einen zweiten Tipp.
-  if (ios) {
-    const file = new File([result.blob], filename, { type: result.blob.type });
-    downloadCache.set(key, file);
-    while (downloadCache.size > 4) downloadCache.delete(downloadCache.keys().next().value);
-    if (Date.now() - startedAt < 700) await shareFileToPhotos(file);
-    else showSaveToPhotosPrompt(file);
-    return;
-  }
-
-  downloadBlob(result.blob, filename);
+  downloadBlob(result.blob, buildDownloadFileName(photo, result.blob.type || photo.type));
   showToast(result.fromCloud ? "✓ Download gestartet (Originalauflösung)" : "✓ Download gestartet (lokale Kopie)");
 }
 
-// Teilen-Menü öffnen; klappt das nicht, zuverlässige Alternativen anbieten
-async function shareFileToPhotos(file, fromPrompt = false) {
-  const canShareFile = typeof navigator.share === "function" &&
-    (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] }));
-  if (!canShareFile) { showLongPressSaveOverlay(URL.createObjectURL(file), true); return; }
-  try {
-    await navigator.share({ files: [file] });
-    document.querySelector(".save-photos-prompt")?.remove();
-    showToast("✓ Mit „Bild sichern“ landet es in Fotos");
-  } catch (e) {
-    if (e && e.name === "AbortError") return; // Nutzer hat abgebrochen
-    console.warn("[Share]", e && e.name, e && e.message);
-    if (fromPrompt) {
-      document.querySelector(".save-photos-prompt")?.remove();
-      showLongPressSaveOverlay(URL.createObjectURL(file), true);
-    } else {
-      showSaveToPhotosPrompt(file);
+// ─── iPhone: Sichern-Fenster ─────────────────────────────────────
+// Öffnet sofort, lädt das Original im Hintergrund, aktiviert dann den
+// Knopf. Der Tipp auf „In Fotos sichern“ ruft das Teilen-Menü ohne
+// Verzögerung auf — damit lässt Safari es jedes Mal zu.
+function openIOSSaveSheet(photo) {
+  document.querySelector(".save-sheet")?.remove();
+  const sheet = document.createElement("div");
+  sheet.className = "save-sheet";
+  sheet.innerHTML = `
+    <div class="save-sheet-img-wrap"><img alt="Foto" /></div>
+    <p class="save-sheet-status">⏳ Lade Originalauflösung…</p>
+    <button type="button" class="primary-button save-sheet-share" disabled>📲 In Fotos sichern</button>
+    <p class="save-sheet-hint">Alternativ: Bild lange drücken → „Zu Fotos hinzufügen“</p>
+    <button type="button" class="secondary-button save-sheet-close">Schließen</button>`;
+  document.body.appendChild(sheet);
+
+  const img = sheet.querySelector("img");
+  const status = sheet.querySelector(".save-sheet-status");
+  const shareBtn = sheet.querySelector(".save-sheet-share");
+  let objectUrl = null;
+  let file = null;
+  let closed = false;
+
+  img.src = getDisplayImageUrl(photo) || photo.cloudUrl || "";
+  const close = () => {
+    closed = true;
+    sheet.remove();
+    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  };
+  sheet.querySelector(".save-sheet-close").addEventListener("click", close);
+
+  const setReady = (f, fromCloud) => {
+    if (closed) return;
+    file = f;
+    objectUrl = URL.createObjectURL(f);
+    img.onload = () => {
+      if (closed) return;
+      const dims = img.naturalWidth ? ` · ${img.naturalWidth}×${img.naturalHeight}` : "";
+      status.textContent = `✓ Bereit${fromCloud ? " (Original)" : " (lokale Kopie)"}${dims}`;
+    };
+    img.src = objectUrl;               // auch langes Drücken speichert jetzt das Original
+    status.textContent = "✓ Bereit";
+    const canShare = typeof navigator.share === "function" &&
+      (typeof navigator.canShare !== "function" || navigator.canShare({ files: [f] }));
+    shareBtn.disabled = !canShare;
+    if (!canShare) shareBtn.hidden = true;
+  };
+
+  shareBtn.addEventListener("click", () => {
+    if (!file) return;
+    // Kein await davor — sonst verfällt Safaris Tipp-Freigabe
+    navigator.share({ files: [file] })
+      .then(() => { if (!closed) status.textContent = "✓ Erledigt — mit „Bild sichern“ landet es in Fotos"; })
+      .catch((e) => {
+        if (e && e.name === "AbortError") return;
+        console.warn("[Share]", e && e.name, e && e.message);
+        if (!closed) status.textContent = "⚠ Teilen nicht möglich — Bild lange drücken → „Zu Fotos hinzufügen“";
+      });
+  });
+
+  const key = downloadCacheKey(photo);
+  if (downloadCache.has(key)) { const c = downloadCache.get(key); setReady(c.file, c.fromCloud); return; }
+
+  getBestQualityBlob(photo, buildDownloadFileName(photo, photo.type)).then((result) => {
+    if (!result) {
+      if (!closed) {
+        status.textContent = "⚠ Original nicht erreichbar — Bild lange drücken → „Zu Fotos hinzufügen“";
+        shareBtn.hidden = true;
+      }
+      return;
     }
-  }
+    const f = new File([result.blob], buildDownloadFileName(photo, result.blob.type || photo.type), { type: result.blob.type });
+    downloadCache.set(key, { file: f, fromCloud: result.fromCloud });
+    while (downloadCache.size > 4) downloadCache.delete(downloadCache.keys().next().value);
+    setReady(f, result.fromCloud);
+  });
 }
 
 function isIOSDevice() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-// Wenn das Bild nicht als Datei geladen werden kann (z. B. Cloud nicht
-// erreichbar): Bild groß anzeigen — iOS speichert per langem Drücken
-// („Zu Fotos hinzufügen“), dafür braucht es keinen Datei-Download.
-function showLongPressSaveOverlay(url, revokeOnClose = false) {
-  document.querySelector(".save-photos-overlay")?.remove();
-  const box = document.createElement("div");
-  box.className = "save-photos-overlay";
-  box.innerHTML = `<p>Bild <strong>lange gedrückt halten</strong> → „Zu Fotos hinzufügen“</p>
-    <img alt="Foto" />
-    <button type="button" class="secondary-button">Schließen</button>`;
-  box.querySelector("img").src = url;
-  box.querySelector("button").addEventListener("click", () => {
-    box.remove();
-    if (revokeOnClose) URL.revokeObjectURL(url);
-  });
-  document.body.appendChild(box);
-}
-
-// Bild ist geladen, aber Safari hat das Teilen-Menü blockiert →
-// Knopf anzeigen, der Tipp liefert die nötige Nutzer-Geste
-function showSaveToPhotosPrompt(file) {
-  document.querySelector(".save-photos-prompt")?.remove();
-  const box = document.createElement("div");
-  box.className = "save-photos-prompt";
-  box.innerHTML = `<p>✓ Bild geladen (Originalauflösung)</p>
-    <button type="button" class="primary-button save-photos-go">📲 In Fotos sichern</button>
-    <button type="button" class="secondary-button save-photos-cancel">Abbrechen</button>`;
-  document.body.appendChild(box);
-  box.querySelector(".save-photos-cancel").addEventListener("click", () => box.remove());
-  box.querySelector(".save-photos-go").addEventListener("click", () => shareFileToPhotos(file, true));
 }
