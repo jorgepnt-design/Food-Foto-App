@@ -1474,3 +1474,22 @@ img.lazy {
   }
   .quick-filter.active { background: var(--primary); border-color: var(--primary); }
 }
+
+/* ── iPhone: „In Fotos sichern“-Hinweis ── */
+.save-photos-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom, 24px));
+  transform: translateX(-50%);
+  z-index: 3000;
+  width: min(92vw, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+.save-photos-prompt p { margin: 0; font-weight: 600; }

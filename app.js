@@ -2752,6 +2752,54 @@ async function downloadPhoto(photo) {
     return;
   }
   const filename = buildDownloadFileName(photo, result.blob.type || photo.type);
+
+  // iPhone/iPad: Ein normaler Download landet nur in der Dateien-App.
+  // In die Fotos-Mediathek kommt ein Bild nur über das Teilen-Menü
+  // („Bild sichern“) — daher dort die Web Share API nutzen.
+  if (isIOSDevice()) {
+    const file = new File([result.blob], filename, { type: result.blob.type || photo.type || "image/jpeg" });
+    if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+        showToast("✓ Tippe auf „Bild sichern“, um es in Fotos zu speichern");
+      } catch (e) {
+        // Safari verlangt einen frischen Tipp, wenn das Laden länger gedauert hat
+        if (e && e.name === "NotAllowedError") showSaveToPhotosPrompt(file);
+        else if (!e || e.name !== "AbortError") { downloadBlob(result.blob, filename); }
+      }
+      return;
+    }
+  }
+
   downloadBlob(result.blob, filename);
   showToast(result.fromCloud ? "✓ Download gestartet (Originalauflösung)" : "✓ Download gestartet (lokale Kopie)");
+}
+
+function isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+// Bild ist geladen, aber Safari hat das Teilen-Menü blockiert →
+// Knopf anzeigen, der Tipp liefert die nötige Nutzer-Geste
+function showSaveToPhotosPrompt(file) {
+  document.querySelector(".save-photos-prompt")?.remove();
+  const box = document.createElement("div");
+  box.className = "save-photos-prompt";
+  box.innerHTML = `<p>Bild ist bereit (Originalauflösung)</p>
+    <button type="button" class="primary-button save-photos-go">📲 In Fotos sichern</button>
+    <button type="button" class="secondary-button save-photos-cancel">Abbrechen</button>`;
+  document.body.appendChild(box);
+  box.querySelector(".save-photos-cancel").addEventListener("click", () => box.remove());
+  box.querySelector(".save-photos-go").addEventListener("click", async () => {
+    try {
+      await navigator.share({ files: [file] });
+      box.remove();
+      showToast("✓ Tippe auf „Bild sichern“, um es in Fotos zu speichern");
+    } catch (e) {
+      if (e && e.name === "AbortError") { box.remove(); return; }
+      box.remove();
+      downloadBlob(file, file.name);
+    }
+  });
 }
