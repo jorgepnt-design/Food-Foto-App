@@ -481,6 +481,9 @@ function bindEvents() {
 
   $("#favorite-toggle").addEventListener("click", toggleSelectedFavorite);
   $("#delete-photo").addEventListener("click", deleteSelected);
+  $("#download-photo").addEventListener("click", () => {
+    downloadPhoto(state.photos.find((p) => p.id === state.selectedId));
+  });
   $("#rotate-left").addEventListener("click", () => editImage({ rotation: state.edit.rotation - 90 }));
   $("#rotate-right").addEventListener("click", () => editImage({ rotation: state.edit.rotation + 90 }));
   $("#crop-square").addEventListener("click", () => editImage({ cropSquare: !state.edit.cropSquare }));
@@ -1403,6 +1406,10 @@ function renderGallery() {
       e.stopPropagation();
       await sharePhoto(photo);
     });
+    node.querySelector(".card-download").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await downloadPhoto(photo);
+    });
     node.querySelector(".card-delete").addEventListener("click", async () => {
       if (!confirm("Dieses Foto wirklich löschen?")) return;
       await removePhoto(photo.id);
@@ -1995,8 +2002,12 @@ function concatUint8(arrays) {
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url; link.download = filename; link.click();
-  URL.revokeObjectURL(url);
+  link.href = url; link.download = filename; link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  // Safari braucht die URL noch kurz nach dem Klick — nicht sofort freigeben
+  setTimeout(() => { URL.revokeObjectURL(url); link.remove(); }, 4000);
 }
 
 async function shareApp() {
@@ -2053,6 +2064,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Share aus Lightbox ───────────────────────────────────────────
   $("#lightbox-share").addEventListener("click", shareLightboxPhoto);
+  $("#lightbox-download").addEventListener("click", () => downloadPhoto(state.filtered[state.lightboxIndex]));
 
   // ── Crop-Toggle ──────────────────────────────────────────────────
   $("#lightbox-crop-toggle").addEventListener("click", toggleCropMode);
@@ -2679,4 +2691,54 @@ async function sharePhoto(photo) {
   } catch {
     alert("Teilen wird auf diesem Gerät nicht unterstützt");
   }
+}
+
+
+// ─── Einzelnes Foto herunterladen (beste verfügbare Auflösung) ────
+// Reihenfolge: 1) frisch signierte Cloud-URL (Original bzw. bearbeitete
+// Version in voller Auflösung), 2) gespeicherte Cloud-URL, 3) lokale Kopie
+// (max. 2000 px, da lokal verkleinert gespeichert wird).
+async function getBestQualityBlob(photo) {
+  const candidates = [];
+  const endpoint = getApiEndpoint();
+  if (endpoint && photo.cloudObject) {
+    candidates.push(async () => {
+      const res = await fetchWithTimeout(`${endpoint}/api/photos/signed-url?objectName=${encodeURIComponent(photo.cloudObject)}`, {}, 20000);
+      const { url } = await res.json();
+      if (!url) throw new Error("keine signierte URL");
+      return url;
+    });
+  }
+  if (photo.cloudUrl) candidates.push(async () => photo.cloudUrl);
+  if (photo.dataUrl && !photo.dataUrl.startsWith("data:")) candidates.push(async () => getDisplayImageUrl(photo));
+  if (photo.dataUrl && photo.dataUrl.startsWith("data:")) candidates.push(async () => photo.dataUrl);
+
+  for (const getUrl of candidates) {
+    try {
+      const url = await getUrl();
+      const res = await fetchWithTimeout(url, { cache: "no-store" }, 60000);
+      const blob = await res.blob();
+      if (blob.size > 0) return { blob, fromCloud: !url.startsWith("data:") };
+    } catch (e) { console.warn("[Download]", e.message); }
+  }
+  return null;
+}
+
+function buildDownloadFileName(photo, mimeType) {
+  const extByType = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "image/heif": "heif", "image/avif": "avif" };
+  const ext = extByType[(mimeType || "").toLowerCase()] || ((photo.name || "").split(".").pop() || "jpg").toLowerCase();
+  const base = (photo.title || (photo.name || "").replace(/\.[^.]+$/, "") || "food-foto")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_ ]+/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || "food-foto";
+  return `${base}.${ext}`;
+}
+
+async function downloadPhoto(photo) {
+  if (!photo) return;
+  showToast("⬇ Lade Bild in bester Auflösung…");
+  const result = await getBestQualityBlob(photo);
+  if (!result) { showToast("⚠ Download fehlgeschlagen", true); return; }
+  const filename = buildDownloadFileName(photo, result.blob.type || photo.type);
+  downloadBlob(result.blob, filename);
+  showToast(result.fromCloud ? "✓ Download gestartet (Originalauflösung)" : "✓ Download gestartet (lokale Kopie)");
 }
