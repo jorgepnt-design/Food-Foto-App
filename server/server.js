@@ -153,6 +153,30 @@ app.get("/api/photos/signed-url", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Einzelbild-Download in Originalauflösung — läuft über die API, damit
+// der Browser keine CORS-Freigabe am Bucket braucht
+app.get("/api/photos/download", async (req, res, next) => {
+  if (!bucket) return res.status(503).json({ error: "GCS not configured" });
+  try {
+    const objectName = String(req.query.objectName || "");
+    if (!objectName.startsWith("food-photos/") || objectName.includes("..")) {
+      return res.status(400).json({ error: "invalid objectName" });
+    }
+    const file = bucket.file(objectName);
+    const [metadata] = await file.getMetadata();
+    const fallbackName = objectName.split("/").pop();
+    const filename = String(req.query.filename || fallbackName).replace(/[\r\n"\\]/g, "").slice(0, 120) || fallbackName;
+    res.setHeader("Content-Type", metadata.contentType || "application/octet-stream");
+    if (metadata.size) res.setHeader("Content-Length", metadata.size);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.setHeader("Cache-Control", "private, max-age=0, no-store");
+    file.createReadStream()
+      .on("error", (error) => { if (!res.headersSent) next(error); else res.destroy(error); })
+      .pipe(res);
+  } catch (error) { next(error); }
+});
+
 const USER_EDITS_FILE = "user-edits.json";
 
 async function readUserEdits() {

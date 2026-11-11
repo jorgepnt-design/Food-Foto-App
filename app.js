@@ -2698,10 +2698,13 @@ async function sharePhoto(photo) {
 // Reihenfolge: 1) frisch signierte Cloud-URL (Original bzw. bearbeitete
 // Version in voller Auflösung), 2) gespeicherte Cloud-URL, 3) lokale Kopie
 // (max. 2000 px, da lokal verkleinert gespeichert wird).
-async function getBestQualityBlob(photo) {
+async function getBestQualityBlob(photo, filename) {
   const candidates = [];
   const endpoint = getApiEndpoint();
   if (endpoint && photo.cloudObject) {
+    // 1) Über die eigene API (CORS-sicher, Originalauflösung)
+    candidates.push(async () => `${endpoint}/api/photos/download?objectName=${encodeURIComponent(photo.cloudObject)}&filename=${encodeURIComponent(filename)}`);
+    // 2) Frisch signierte GCS-URL
     candidates.push(async () => {
       const res = await fetchWithTimeout(`${endpoint}/api/photos/signed-url?objectName=${encodeURIComponent(photo.cloudObject)}`, {}, 20000);
       const { url } = await res.json();
@@ -2710,13 +2713,12 @@ async function getBestQualityBlob(photo) {
     });
   }
   if (photo.cloudUrl) candidates.push(async () => photo.cloudUrl);
-  if (photo.dataUrl && !photo.dataUrl.startsWith("data:")) candidates.push(async () => getDisplayImageUrl(photo));
-  if (photo.dataUrl && photo.dataUrl.startsWith("data:")) candidates.push(async () => photo.dataUrl);
+  if (photo.dataUrl) candidates.push(async () => getDisplayImageUrl(photo));
 
   for (const getUrl of candidates) {
     try {
       const url = await getUrl();
-      const res = await fetchWithTimeout(url, { cache: "no-store" }, 60000);
+      const res = await fetchWithTimeout(url, { cache: "no-store" }, 90000);
       const blob = await res.blob();
       if (blob.size > 0) return { blob, fromCloud: !url.startsWith("data:") };
     } catch (e) { console.warn("[Download]", e.message); }
@@ -2736,8 +2738,19 @@ function buildDownloadFileName(photo, mimeType) {
 async function downloadPhoto(photo) {
   if (!photo) return;
   showToast("⬇ Lade Bild in bester Auflösung…");
-  const result = await getBestQualityBlob(photo);
-  if (!result) { showToast("⚠ Download fehlgeschlagen", true); return; }
+  const preferredName = buildDownloadFileName(photo, photo.type);
+  const result = await getBestQualityBlob(photo, preferredName);
+  if (!result) {
+    // Letzter Ausweg: Bild direkt öffnen, damit es manuell gespeichert werden kann
+    const url = photo.cloudUrl || getDisplayImageUrl(photo);
+    if (url && !url.startsWith("data:")) {
+      window.open(url, "_blank", "noopener");
+      showToast("⚠ Direkter Download nicht möglich — Bild in neuem Tab geöffnet", true);
+    } else {
+      showToast("⚠ Download fehlgeschlagen", true);
+    }
+    return;
+  }
   const filename = buildDownloadFileName(photo, result.blob.type || photo.type);
   downloadBlob(result.blob, filename);
   showToast(result.fromCloud ? "✓ Download gestartet (Originalauflösung)" : "✓ Download gestartet (lokale Kopie)");
